@@ -155,6 +155,9 @@ export async function buildClientConfig(
       enabled: true,
       daemonPublicKeyB64: connection.daemonPublicKeyB64,
       ...(connection.enrollToken ? { enrollToken: connection.enrollToken } : {}),
+      ...(connection.clientSecretKeyB64
+        ? { clientSecretKeyB64: connection.clientSecretKeyB64 }
+        : {}),
     },
   };
 }

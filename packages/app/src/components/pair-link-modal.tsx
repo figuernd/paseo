@@ -1,3 +1,4 @@
+import { exportSecretKey, generateKeyPair } from "@getpaseo/relay/e2ee";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Text, TextInput, View } from "react-native";
@@ -134,6 +135,9 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
       setIsSaving(true);
       setErrorMessage("");
 
+      // Same as the scan flow: the probe redeems the one-time token, so it has
+      // to present the identity the saved profile will keep.
+      const clientSecretKeyB64 = exportSecretKey(generateKeyPair().secretKey);
       const { client, hostname } = await connectToDaemon(
         {
           id: "probe",
@@ -141,13 +145,19 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
           relayEndpoint: normalizeHostPort(parsedOffer.relay.endpoint),
           useTls: parsedOffer.relay.useTls,
           daemonPublicKeyB64: parsedOffer.daemonPublicKeyB64,
+          enrollToken: parsedOffer.enroll,
+          clientSecretKeyB64,
         },
         { serverId: parsedOffer.serverId },
       );
       await client.close().catch(() => undefined);
 
       const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
-      const profile = await upsertDaemonFromOfferUrl(raw, hostname ?? undefined);
+      const profile = await upsertDaemonFromOfferUrl(
+        raw,
+        hostname ?? undefined,
+        clientSecretKeyB64,
+      );
       onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
       handleClose();
     } catch (error) {

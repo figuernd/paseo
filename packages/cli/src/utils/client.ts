@@ -15,6 +15,7 @@ import { DaemonClient, type WebSocketLike } from "@getpaseo/client/internal/daem
 import path from "node:path";
 import { WebSocket } from "ws";
 import { getOrCreateCliClientId } from "./client-id.js";
+import { getOrCreateCliClientSecretKey } from "./client-identity.js";
 import { resolveCliVersion } from "../version.js";
 
 export interface ConnectOptions {
@@ -330,6 +331,7 @@ async function connectViaRelayOffer(
       enabled: true,
       daemonPublicKeyB64: offer.daemonPublicKeyB64,
       enrollToken: offer.enroll,
+      clientSecretKeyB64: await getOrCreateCliClientSecretKey(),
     },
     reconnect: { enabled: false },
   });

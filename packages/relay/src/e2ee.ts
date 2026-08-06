@@ -7,6 +7,7 @@ export {
 } from "./encrypted-channel.js";
 export type {
   ClientAuthorizer,
+  ClientChannelOptions,
   Transport,
   TransportMessage,
   EncryptedChannelEvents,
@@ -18,5 +19,6 @@ export {
   importPublicKey,
   exportSecretKey,
   importSecretKey,
+  keyPairFromSecretKey,
 } from "./crypto.js";
 export type { KeyPair, SharedKey } from "./crypto.js";

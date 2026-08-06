@@ -138,6 +138,35 @@ describe("paired client store", () => {
     ).toBe("enrolled");
   });
 
+  test("sees an offer minted by another process", async () => {
+    // `paseo daemon pair` mints from the CLI process while the handshake is
+    // authorized inside the daemon. A store that only read at construction
+    // would never see the token and pairing would silently never work.
+    const home = await makeHome();
+    const daemonSide = new PairedClientStore(home);
+    daemonSide.list();
+
+    const cliSide = new PairedClientStore(home);
+    const token = cliSide.createEnrollment();
+
+    expect(daemonSide.authorize({ publicKeyB64: CLIENT_A, enrollToken: token }).outcome).toBe(
+      "enrolled",
+    );
+  });
+
+  test("sees a revocation performed by another process", async () => {
+    const home = await makeHome();
+    const daemonSide = new PairedClientStore(home);
+    daemonSide.authorize({ publicKeyB64: CLIENT_A, enrollToken: daemonSide.createEnrollment() });
+
+    new PairedClientStore(home).revoke(fingerprintPublicKey(CLIENT_A));
+
+    expect(daemonSide.authorize({ publicKeyB64: CLIENT_A })).toEqual({
+      outcome: "rejected",
+      reason: "unknown-client",
+    });
+  });
+
   test("stores the file with owner-only permissions", async () => {
     const home = await makeHome();
     const store = new PairedClientStore(home);

@@ -312,6 +312,14 @@ export interface DaemonClientConfig {
     daemonPublicKeyB64?: string;
     /** Single-use token from the pairing offer. Required until this client is enrolled. */
     enrollToken?: string;
+    /**
+     * Base64 secret key of this client's persisted identity.
+     *
+     * Enrollment binds the daemon's approval to this key, so it must be stable
+     * across connections. Omitting it means a fresh key per connection, which
+     * an enrolling daemon will refuse after the first.
+     */
+    clientSecretKeyB64?: string;
   };
   reconnect?: {
     enabled?: boolean;
@@ -1244,10 +1252,12 @@ export class DaemonClient {
       throw new Error("daemonPublicKeyB64 is required for relay E2EE");
     }
     const enrollToken = this.config.e2ee?.enrollToken;
+    const clientSecretKeyB64 = this.config.e2ee?.clientSecretKeyB64;
     return createRelayE2eeTransportFactory({
       baseFactory,
       daemonPublicKeyB64,
       ...(enrollToken ? { enrollToken } : {}),
+      ...(clientSecretKeyB64 ? { clientSecretKeyB64 } : {}),
       logger: this.logger,
     });
   }

@@ -44,6 +44,7 @@
     "@getpaseo/expo-two-way-audio": "*",
     "@getpaseo/highlight": "*",
     "@getpaseo/protocol": "*",
+    "@getpaseo/relay": "*",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@gorhom/portal": "^1.0.14",
     "@react-native-async-storage/async-storage": "2.2.0",

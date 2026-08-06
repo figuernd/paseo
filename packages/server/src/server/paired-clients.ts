@@ -79,8 +79,22 @@ export class PairedClientStore {
     this.load();
   }
 
+  /**
+   * Re-reads the file before every operation.
+   *
+   * Offers are minted from whichever process the user ran — the daemon over
+   * RPC, or `paseo daemon pair` in its own process — while the handshake is
+   * authorized inside the daemon. Without this, a token minted anywhere but the
+   * daemon's own instance is invisible to the authorizer until a restart, and
+   * pairing silently never works.
+   *
+   * Writes are atomic, so the remaining race is two processes mutating between
+   * a reload and a persist. Pairing and revocation are human-paced, so that
+   * window is not worth locking for.
+   */
   private load(): void {
     if (!existsSync(this.filePath)) {
+      this.state = { v: 1, clients: [], pendingEnrollments: [] };
       return;
     }
     try {
@@ -108,6 +122,7 @@ export class PairedClientStore {
 
   /** Mints a single-use token to embed in a pairing offer. */
   createEnrollment(options: { ttlMs?: number; nowMs?: number } = {}): string {
+    this.load();
     const nowMs = options.nowMs ?? Date.now();
     this.pruneExpired(nowMs);
     const token = randomBytes(32).toString("base64url");
@@ -132,6 +147,7 @@ export class PairedClientStore {
     label?: string | null;
     nowMs?: number;
   }): ClientAuthorization {
+    this.load();
     const nowMs = input.nowMs ?? Date.now();
     this.pruneExpired(nowMs);
 
@@ -170,11 +186,13 @@ export class PairedClientStore {
   }
 
   list(): PairedClient[] {
+    this.load();
     return this.state.clients.map((client) => ({ ...client }));
   }
 
   /** Returns the removed client's public key so live sessions can be closed. */
   revoke(fingerprint: string): PairedClient | null {
+    this.load();
     const index = this.state.clients.findIndex((c) => c.fingerprint === fingerprint);
     if (index === -1) {
       return null;
@@ -187,6 +205,7 @@ export class PairedClientStore {
 
   /** Drops every client and outstanding offer. Used by key rotation. */
   revokeAll(): PairedClient[] {
+    this.load();
     const removed = this.state.clients;
     this.state = { v: 1, clients: [], pendingEnrollments: [] };
     this.persist();

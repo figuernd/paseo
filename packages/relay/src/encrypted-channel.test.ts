@@ -167,7 +167,14 @@ describe("EncryptedChannel", () => {
       seen.push(input);
       return true;
     });
-    await createClientChannel(clientTransport, daemonPubKeyB64, {}, "enroll-token-abc");
+    await createClientChannel(
+      clientTransport,
+      daemonPubKeyB64,
+      {},
+      {
+        enrollToken: "enroll-token-abc",
+      },
+    );
     await daemonChannelPromise;
 
     expect(seen).toHaveLength(1);

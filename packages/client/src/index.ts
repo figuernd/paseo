@@ -65,6 +65,14 @@ export interface PaseoClientConfig {
     daemonPublicKeyB64?: string;
     /** Single-use token from the pairing offer. Required until this client is enrolled. */
     enrollToken?: string;
+    /**
+     * Base64 secret key of this client's persisted identity.
+     *
+     * Enrollment binds the daemon's approval to this key, so it must be stable
+     * across connections. Omitting it means a fresh key per connection, which
+     * an enrolling daemon will refuse after the first.
+     */
+    clientSecretKeyB64?: string;
   };
   reconnect?: {
     enabled?: boolean;

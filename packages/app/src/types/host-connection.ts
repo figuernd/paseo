@@ -40,6 +40,14 @@ export interface RelayHostConnection {
    * enrolled, so re-sending it is harmless and re-trying a failed pairing works.
    */
   enrollToken?: string;
+  /**
+   * Base64 secret key of this device's identity for this host.
+   *
+   * The daemon enrolls this key, so it has to survive across connections and be
+   * the same key the pairing probe used — otherwise enrollment binds a key the
+   * real connection never presents again.
+   */
+  clientSecretKeyB64?: string;
 }
 
 export type HostConnection =
@@ -112,6 +120,14 @@ export function resolveActiveHostServerId(params: {
   );
 }
 
+/**
+ * Whether two records point at the same daemon over the same route.
+ *
+ * This is an identity test, not a value test — it deliberately ignores the
+ * relay credentials, so a re-pair against a daemon you already have matches the
+ * stored record instead of piling up a second copy of it. Use
+ * {@link hostConnectionRecordEquals} to ask whether anything changed.
+ */
 function hostConnectionEquals(left: HostConnection, right: HostConnection): boolean {
   if (left.type !== right.type || left.id !== right.id) {
     return false;
@@ -141,6 +157,11 @@ function hostConnectionEquals(left: HostConnection, right: HostConnection): bool
   return false;
 }
 
+/** Full record equality, including the credentials {@link hostConnectionEquals} ignores. */
+function hostConnectionRecordEquals(left: HostConnection, right: HostConnection): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -148,10 +169,15 @@ function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean
 function dedupeHostConnections(connections: HostConnection[]): HostConnection[] {
   const next: HostConnection[] = [];
   for (const connection of connections) {
-    if (next.some((existing) => hostConnectionEquals(existing, connection))) {
+    const index = next.findIndex((existing) => hostConnectionEquals(existing, connection));
+    if (index === -1) {
+      next.push(connection);
       continue;
     }
-    next.push(connection);
+    // Later record wins, in place. Re-pairing carries a fresh enrollment token
+    // and client identity; keeping the first copy would pin the profile to a
+    // spent token and a key the daemon has revoked.
+    next[index] = connection;
   }
   return next;
 }
@@ -223,7 +249,7 @@ export function upsertHostConnectionInProfiles(input: {
     nextConnections.length !== prev.connections.length ||
     nextConnections.some((connection, index) => {
       const previousConnection = prev.connections[index];
-      return !previousConnection || !hostConnectionEquals(connection, previousConnection);
+      return !previousConnection || !hostConnectionRecordEquals(connection, previousConnection);
     });
 
   if (!changed) {

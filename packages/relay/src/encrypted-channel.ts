@@ -174,22 +174,38 @@ function hasUnref(timeout: unknown): timeout is TimeoutWithUnref {
   );
 }
 
+export interface ClientChannelOptions {
+  /** Single-use token from the pairing offer; the daemon ignores it once enrolled. */
+  enrollToken?: string;
+  /**
+   * The client's long-lived identity keypair.
+   *
+   * Enrollment binds the daemon's approval to this key, so it has to be the
+   * same one on every connection — a fresh keypair per channel would enroll
+   * once and then be refused, because the token it used is already spent.
+   * Generated per channel only when a caller has no identity to reuse, which
+   * in practice means tests.
+   */
+  keyPair?: KeyPair;
+}
+
 /**
  * Creates an encrypted channel as the initiator (client).
  *
  * The client:
- * 1. Receives daemon's public key via QR code
- * 2. Generates own keypair
- * 3. Sends e2ee_hello with own public key
+ * 1. Receives the daemon's public key and enrollment token via the pairing offer
+ * 2. Presents its identity keypair, generating one only if the caller has none
+ * 3. Sends e2ee_hello with its public key, plus the token until it is enrolled
  * 4. Derives shared key and starts encrypted communication
  */
 export async function createClientChannel(
   transport: Transport,
   daemonPublicKeyB64: string,
   events: EncryptedChannelEvents = {},
-  enrollToken?: string,
+  options: ClientChannelOptions = {},
 ): Promise<EncryptedChannel> {
-  const keyPair = generateKeyPair();
+  const enrollToken = options.enrollToken;
+  const keyPair = options.keyPair ?? generateKeyPair();
   const daemonPublicKey = importPublicKey(daemonPublicKeyB64);
   const sharedKey = deriveSharedKey(keyPair.secretKey, daemonPublicKey);
 
