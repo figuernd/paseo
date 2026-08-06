@@ -42,6 +42,7 @@ import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { createRelayPatch, getRelayCardState } from "./relay-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
   getHostRuntimeStore,
@@ -262,6 +263,7 @@ export function HostPairDevicePage({ serverId }: { serverId: string }) {
   return (
     <SettingsSection title={t("settings.host.pairDevices.title")}>
       <PairDeviceRow serverId={serverId} />
+      <RelayEnabledCard serverId={serverId} />
     </SettingsSection>
   );
 }
@@ -968,6 +970,45 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
           />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function RelayEnabledCard({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      void patchConfig(createRelayPatch(next)).catch((error) => {
+        // The daemon rejects this when relay is pinned by PASEO_RELAY_ENABLED or
+        // a CLI flag, and its message names the override to remove.
+        Alert.alert(
+          t("settings.host.relay.updateFailedTitle"),
+          error instanceof Error ? error.message : String(error),
+        );
+      });
+    },
+    [patchConfig, t],
+  );
+
+  const { isVisible, isEnabled } = getRelayCardState({ isConnected, config: config ?? null });
+  if (!isVisible) return null;
+
+  return (
+    <View style={settingsStyles.card} testID="host-page-relay-card">
+      <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.title")}</Text>
+          <Text style={settingsStyles.rowHint}>{t("settings.host.relay.hint")}</Text>
+        </View>
+        <Switch
+          value={isEnabled}
+          onValueChange={handleValueChange}
+          accessibilityLabel={t("settings.host.relay.accessibilityLabel")}
+        />
+      </View>
     </View>
   );
 }

@@ -2011,6 +2011,12 @@ export const zhCN: TranslationResources = {
         rowTitle: "配对设备",
         rowHint: "扫描二维码或复制链接，将手机连接到这个 Host",
       },
+      relay: {
+        title: "Relay",
+        hint: "让已配对的设备可以从任何地方连接到这个 Host。启用期间，守护进程会保持一条到 relay 的出站连接。流量仍是端到端加密的；relay 只能看到连接元数据。",
+        accessibilityLabel: "Relay 连接",
+        updateFailedTitle: "无法更改 relay",
+      },
       orchestration: {
         title: "编排",
         unavailable: "连接到这个 Host 以管理编排",

@@ -2087,6 +2087,12 @@ export const fr: TranslationResources = {
         rowTitle: "Associer un appareil",
         rowHint: "Scannez un codeQRou copiez un lien pour connecter votre téléphone à cet hôte",
       },
+      relay: {
+        title: "Relais",
+        hint: "Permet aux appareils associés d'atteindre cet hôte depuis n'importe où. Le démon conserve une connexion sortante vers le relais tant que cette option est activée. Le trafic reste chiffré de bout en bout ; le relais ne voit que les métadonnées de connexion.",
+        accessibilityLabel: "Connexion au relais",
+        updateFailedTitle: "Impossible de modifier le relais",
+      },
       orchestration: {
         title: "Orchestration",
         unavailable: "Connectez-vous à cet hôte pour gérer l'orchestration",
