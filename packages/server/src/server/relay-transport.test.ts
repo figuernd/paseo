@@ -340,6 +340,74 @@ describe("relay-transport control lifecycle", () => {
     expect(completed).toBe(true);
   });
 
+  test("closeClientSessions closes a revoked client's live session", async () => {
+    const logger = createMockLogger();
+    const daemonKeyPair = generateKeyPair();
+    const strangerKeyPair = generateKeyPair();
+    let connectedKey: string | undefined;
+    let resolveAttached: ((socket: unknown) => void) | undefined;
+    const attached = new Promise<unknown>((resolve) => {
+      resolveAttached = resolve;
+    });
+    const controller = startRelayTransport({
+      logger: logger as unknown as pino.Logger,
+      attachSocket: async (socket) => resolveAttached?.(socket),
+      relayEndpoint: "relay.paseo.sh:443",
+      relayUseTls: true,
+      serverId: "srv_test",
+      daemonKeyPair,
+      // The client's key is ephemeral per connection, so learn it here rather
+      // than trying to reach into the channel.
+      authorizeClient: ({ clientPublicKeyB64 }) => {
+        connectedKey = clientPublicKeyB64;
+        return true;
+      },
+      createWebSocket: relay.createWebSocket,
+    });
+    controllers.push(controller);
+
+    const control = relay.sockets[0];
+    control.open();
+    control.message(JSON.stringify({ type: "sync", connectionIds: [] }), false);
+    control.message(JSON.stringify({ type: "connected", connectionId: "clt_revoke" }), false);
+
+    const dataSocket = relay.sockets[1];
+    dataSocket.open();
+    let clientTransport: Transport;
+    clientTransport = {
+      send: (data) => dataSocket.message(data, data instanceof ArrayBuffer),
+      close: () => undefined,
+      onmessage: null,
+      onclose: null,
+      onerror: null,
+    };
+    dataSocket.onSend = (data) => {
+      clientTransport.onmessage?.({
+        data: data instanceof Uint8Array ? data.slice().buffer : data,
+        isBinary: data instanceof ArrayBuffer || data instanceof Uint8Array,
+      });
+    };
+    let resolveClientOpen: (() => void) | undefined;
+    const clientOpen = new Promise<void>((resolve) => {
+      resolveClientOpen = resolve;
+    });
+    await createClientChannel(clientTransport, exportPublicKey(daemonKeyPair.publicKey), {
+      onopen: () => resolveClientOpen?.(),
+    });
+    await clientOpen;
+    await attached;
+
+    // A key that never connected has nothing to close.
+    expect(controller.closeClientSessions(exportPublicKey(strangerKeyPair.publicKey))).toBe(0);
+
+    // Revoking the key that *is* connected must not wait for a reconnect.
+    expect(connectedKey).toBeDefined();
+    expect(controller.closeClientSessions(connectedKey!)).toBe(1);
+
+    // Closed once; a second revoke finds nothing left.
+    expect(controller.closeClientSessions(connectedKey!)).toBe(0);
+  });
+
   test("uses relayUseTls for control and data socket URLs", () => {
     const logger = createMockLogger();
     const controller = startRelayTransport({

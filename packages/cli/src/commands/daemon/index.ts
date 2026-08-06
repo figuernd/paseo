@@ -4,6 +4,7 @@ import { runStatusCommand } from "./status.js";
 import { runStopCommand } from "./stop.js";
 import { runRestartCommand } from "./restart.js";
 import { runSetPasswordCommand } from "./set-password.js";
+import { runClientsListCommand, runClientsRevokeCommand, runRotateKeyCommand } from "./clients.js";
 import { pairCommand } from "./pair.js";
 import { withOutput } from "../../output/index.js";
 import { addJsonOption } from "../../utils/command-options.js";
@@ -71,6 +72,21 @@ export function createDaemonCommand(): Command {
   )
     .option("--home <path>", "Paseo home directory (default: ~/.paseo)")
     .action(withOutput(runSetPasswordCommand));
+
+  addJsonOption(
+    daemon.command("clients").description("List devices paired with this daemon"),
+  ).action(withOutput(runClientsListCommand));
+
+  addJsonOption(
+    daemon
+      .command("revoke")
+      .argument("<fingerprint>", 'Client fingerprint from `paseo daemon clients`, or "all"')
+      .description("Revoke a paired device and close its live sessions"),
+  ).action(withOutput(runClientsRevokeCommand));
+
+  addJsonOption(daemon.command("rotate-key").description("Revoke every paired device")).action(
+    withOutput(runRotateKeyCommand),
+  );
 
   return daemon;
 }

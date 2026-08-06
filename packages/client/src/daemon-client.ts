@@ -84,6 +84,7 @@ import type {
   ProviderUsageListResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
+  PairedClientSummary,
   DiagnosticsResponse,
   AgentRewindResponseMessage,
   ListTerminalsResponse,
@@ -4564,6 +4565,31 @@ export class DaemonClient {
       requestId,
       message: { type: "hub.management.daemon.disconnect.request", force },
       responseType: "hub.management.daemon.disconnect.response",
+    });
+  }
+
+  async listPairedClients(options?: {
+    requestId?: string;
+    timeout?: number;
+  }): Promise<{ requestId: string; clients: PairedClientSummary[] }> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: { type: "daemon.clients.list.request" },
+      responseType: "daemon.clients.list.response",
+      timeout: options?.timeout,
+    });
+  }
+
+  /** Pass "all" to revoke every client, as key rotation does. */
+  async revokePairedClients(
+    fingerprint: string,
+    options?: { requestId?: string; timeout?: number },
+  ): Promise<{ requestId: string; revoked: PairedClientSummary[]; sessionsClosed: number }> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: { type: "daemon.clients.revoke.request", fingerprint },
+      responseType: "daemon.clients.revoke.response",
+      timeout: options?.timeout,
     });
   }
 

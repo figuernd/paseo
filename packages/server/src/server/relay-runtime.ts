@@ -28,6 +28,8 @@ interface RelayRuntimeOptions {
 export interface RelayRuntime {
   getConfig(): RelayRuntimeConfig;
   setEnabled(enabled: boolean): void;
+  /** Closes live sessions for a revoked client. No-op while relay is off. */
+  closeClientSessions(clientPublicKeyB64: string): number;
   stop(): Promise<void>;
 }
 
@@ -75,6 +77,8 @@ export function createRelayRuntime(options: RelayRuntimeOptions): RelayRuntime {
   return {
     getConfig: () => config,
     setEnabled,
+    closeClientSessions: (clientPublicKeyB64) =>
+      transport?.closeClientSessions(clientPublicKeyB64) ?? 0,
     stop,
   };
 }

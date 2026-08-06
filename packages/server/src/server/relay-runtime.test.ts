@@ -12,7 +12,7 @@ describe("RelayRuntime", () => {
       starts.push(options.relayEndpoint);
       const stop = vi.fn(async () => undefined);
       stops.push(stop);
-      return { stop } satisfies RelayTransportController;
+      return { stop, closeClientSessions: () => 0 } satisfies RelayTransportController;
     };
     const runtime = createRelayRuntime({
       config: {

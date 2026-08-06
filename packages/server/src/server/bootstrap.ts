@@ -1593,6 +1593,34 @@ export async function createPaseoDaemon(
                     useTls: relayUseTls,
                     publicUseTls: relayPublicUseTls,
                   },
+                listPairedClients: () =>
+                  pairedClients.list().map((client) => ({
+                    fingerprint: client.fingerprint,
+                    label: client.label,
+                    addedAt: client.addedAt,
+                    lastSeenAt: client.lastSeenAt,
+                  })),
+                revokePairedClients: (fingerprint) => {
+                  const removed =
+                    fingerprint === "all"
+                      ? pairedClients.revokeAll()
+                      : [pairedClients.revoke(fingerprint)].filter((c) => c !== null);
+                  // Dropping the key only stops the next handshake; a revoked
+                  // device holding an open session keeps it until it reconnects.
+                  let sessionsClosed = 0;
+                  for (const client of removed) {
+                    sessionsClosed += relayRuntime?.closeClientSessions(client.publicKeyB64) ?? 0;
+                  }
+                  return {
+                    revoked: removed.map((client) => ({
+                      fingerprint: client.fingerprint,
+                      label: client.label,
+                      addedAt: client.addedAt,
+                      lastSeenAt: client.lastSeenAt,
+                    })),
+                    sessionsClosed,
+                  };
+                },
               },
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
