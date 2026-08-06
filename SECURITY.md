@@ -21,7 +21,7 @@ The relay is designed to be untrusted. All traffic between your phone and daemon
 
 1. The daemon generates a persistent Curve25519 keypair on first run and stores it at `$PASEO_HOME/daemon-keypair.json` with mode `0600`
 2. The pairing URL (rendered as a QR code or opened directly) carries the daemon's public key and a single-use enrollment token in its URL fragment (`https://app.paseo.sh/#offer=...`). Fragments are not sent to the web server, so `app.paseo.sh` never sees either value.
-3. When the phone connects via the relay, it generates a fresh ephemeral Curve25519 keypair and sends an `e2ee_hello` message containing its public key, plus the enrollment token on a first connection. The daemon checks that key against its paired-client list before deriving a shared key or replying, and will not process any application messages until the handshake completes.
+3. When the phone connects via the relay, it sends an `e2ee_hello` message containing its own Curve25519 public key, plus the enrollment token until it is enrolled. That keypair is the device's identity for the host, generated at pairing time and kept afterwards, because enrollment binds the daemon's approval to it. The daemon checks the key against its paired-client list before deriving a shared key or replying, and will not process any application messages until the handshake completes.
 4. Both sides perform a Curve25519 ECDH key exchange to derive a shared key. All subsequent messages are encrypted with XSalsa20-Poly1305 (NaCl `box`). The encrypted bundle is `[24-byte nonce][ciphertext]`. Peers optionally negotiate `binaryCiphertext` in `e2ee_hello` / `e2ee_ready`: negotiated application text is carried as a base64 WebSocket text frame, while application binary is carried as a raw WebSocket binary frame. A peer that does not negotiate the capability uses base64 text frames for both kinds.
 
 The WebSocket opcode is preserved end to end after negotiation; the receiver never guesses whether authenticated plaintext is text or binary from its byte contents. The plaintext handshake remains WebSocket text and contains only public keys and capability declarations.
@@ -44,7 +44,7 @@ The QR code or pairing link is the trust anchor. It carries the daemon's public 
 
 The public key alone is not a credential — it appears in every offer the daemon renders. The enrollment token is what admits a device: the daemon redeems it on that device's first handshake, records the device's key, and discards the token. A link that leaks therefore admits at most the first device to use it, and that device shows up in `paseo daemon clients` rather than going unnoticed. Unredeemed tokens expire after 10 minutes.
 
-After enrollment, the device's own key is what gets it back in, so the link is spent and no longer worth anything.
+After enrollment, the device's own key is what gets it back in, so the link is spent and no longer worth anything. The app stores that key with the host profile; the CLI keeps one at `$PASEO_HOME/cli-client-key`, mode `0600`. Anything that can read those files can reconnect as that device until you revoke it.
 
 Manage paired devices from the daemon machine:
 
