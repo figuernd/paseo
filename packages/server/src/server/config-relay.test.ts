@@ -124,6 +124,25 @@ describe("daemon relay config", () => {
     expect(loadConfig(home, { env: { PASEO_RELAY_USE_TLS: "true" } }).relayUseTls).toBe(true);
   });
 
+  test("derives publicUseTls from the public endpoint when the two differ", async () => {
+    // Daemon dials a local relay, clients are told a public one. Inheriting the
+    // loopback-derived false here would advertise ws://relay.example.com:443.
+    const split = await createPaseoHome({
+      version: 1,
+      daemon: {
+        relay: { endpoint: "localhost:8787", publicEndpoint: "relay.example.com:443" },
+      },
+    });
+    const config = loadConfig(split, { env: {} });
+    expect(config.relayUseTls).toBe(false);
+    expect(config.relayPublicUseTls).toBe(true);
+
+    // An explicit public override still wins.
+    expect(
+      loadConfig(split, { env: { PASEO_RELAY_PUBLIC_USE_TLS: "false" } }).relayPublicUseTls,
+    ).toBe(false);
+  });
+
   test("relayPublicUseTls falls back to relayUseTls when unset", async () => {
     const home = await createPaseoHome({ version: 1, daemon: { relay: {} } });
     // Default: both true (hosted relay)

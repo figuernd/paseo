@@ -2091,7 +2091,6 @@ export const fr: TranslationResources = {
         title: "Relais",
         hint: "Permet aux appareils associés d'atteindre cet hôte depuis n'importe où. Le démon conserve une connexion sortante vers le relais tant que cette option est activée. Le trafic reste chiffré de bout en bout ; le relais ne voit que les métadonnées de connexion.",
         accessibilityLabel: "Connexion au relais",
-        updateFailedTitle: "Impossible de modifier le relais",
       },
       orchestration: {
         title: "Orchestration",

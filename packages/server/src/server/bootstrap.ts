@@ -398,8 +398,8 @@ export interface PaseoDaemonConfig {
    * their preview either way.
    */
   pushIncludeContent?: boolean;
-  /** See PaseoToolHostDependencies.allowTerminalTools. Off by default. */
-  allowTerminalTools?: boolean;
+  /** See PaseoToolHostDependencies.allowDaemonExecution. Off by default. */
+  allowDaemonExecution?: boolean;
   git?: {
     maxProcessesPerSecond: number;
     maxProcessConcurrency: number;
@@ -1254,7 +1254,7 @@ export async function createPaseoDaemon(
     agentManager,
     agentStorage,
     terminalManager,
-    allowTerminalTools: config.allowTerminalTools === true,
+    allowDaemonExecution: config.allowDaemonExecution === true,
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
     providerSnapshotManager,

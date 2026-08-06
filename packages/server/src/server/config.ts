@@ -222,6 +222,30 @@ function resolveTlsFromEnv(
   return persistedValue ?? fallback;
 }
 
+function resolveRelayTls(
+  input: ResolveRelayInput,
+  endpoint: string,
+  publicEndpoint: string,
+): Pick<ResolvedRelay, "useTls" | "publicUseTls"> {
+  const useTls =
+    input.cliRelayUseTls ??
+    resolveTlsFromEnv(
+      input.env.PASEO_RELAY_USE_TLS,
+      input.persisted.daemon?.relay?.useTls,
+      relayEndpointDefaultsToTls(endpoint),
+    );
+  // Inheriting useTls is right only while both sides name the same host. Split
+  // endpoints (daemon dials a local relay, clients are told a public one) would
+  // otherwise carry a loopback-derived `false` onto a public hostname, and the
+  // pairing offer would advertise ws:// across the network.
+  const publicUseTls = resolveTlsFromEnv(
+    input.env.PASEO_RELAY_PUBLIC_USE_TLS,
+    input.persisted.daemon?.relay?.publicUseTls,
+    publicEndpoint === endpoint ? useTls : relayEndpointDefaultsToTls(publicEndpoint),
+  );
+  return { useTls, publicUseTls };
+}
+
 function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
   const environmentEnabled = parseBooleanEnv(input.env.PASEO_RELAY_ENABLED);
   // COMPAT(relayOptInDefault): configs created before v0.2.6 may omit this field.
@@ -236,18 +260,7 @@ function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
     input.env.PASEO_RELAY_PUBLIC_ENDPOINT ??
     input.persisted.daemon?.relay?.publicEndpoint ??
     endpoint;
-  const useTls =
-    input.cliRelayUseTls ??
-    resolveTlsFromEnv(
-      input.env.PASEO_RELAY_USE_TLS,
-      input.persisted.daemon?.relay?.useTls,
-      relayEndpointDefaultsToTls(endpoint),
-    );
-  const publicUseTls = resolveTlsFromEnv(
-    input.env.PASEO_RELAY_PUBLIC_USE_TLS,
-    input.persisted.daemon?.relay?.publicUseTls,
-    useTls,
-  );
+  const { useTls, publicUseTls } = resolveRelayTls(input, endpoint, publicEndpoint);
   return {
     enabled,
     enabledMutable: input.cliRelayEnabled === undefined && environmentEnabled === undefined,
@@ -444,7 +457,7 @@ function resolvePushIncludeContent(persisted: ReturnType<typeof loadPersistedCon
 }
 
 function resolveAllowTerminalTools(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
-  return persisted.daemon?.mcp?.allowTerminalTools ?? false;
+  return persisted.daemon?.mcp?.allowDaemonExecution ?? false;
 }
 
 function resolveStaticLoadConfigSettings(
@@ -458,7 +471,7 @@ function resolveStaticLoadConfigSettings(
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
     pushIncludeContent: resolvePushIncludeContent(persisted),
-    allowTerminalTools: resolveAllowTerminalTools(persisted),
+    allowDaemonExecution: resolveAllowTerminalTools(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -488,7 +501,7 @@ export function loadConfig(
     mcpInjectIntoAgents,
     browserToolsEnabled,
     pushIncludeContent,
-    allowTerminalTools,
+    allowDaemonExecution,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -529,7 +542,7 @@ export function loadConfig(
     mcpInjectIntoAgents,
     browserToolsEnabled,
     pushIncludeContent,
-    allowTerminalTools,
+    allowDaemonExecution,
     git: resolveGitProcessConfig(env, persisted),
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,

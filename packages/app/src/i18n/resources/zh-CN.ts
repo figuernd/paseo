@@ -2015,7 +2015,6 @@ export const zhCN: TranslationResources = {
         title: "Relay",
         hint: "让已配对的设备可以从任何地方连接到这个 Host。启用期间，守护进程会保持一条到 relay 的出站连接。流量仍是端到端加密的；relay 只能看到连接元数据。",
         accessibilityLabel: "Relay 连接",
-        updateFailedTitle: "无法更改 relay",
       },
       orchestration: {
         title: "编排",

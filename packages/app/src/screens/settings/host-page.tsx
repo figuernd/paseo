@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react-native";
 import type { TFunction } from "i18next";
+import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
@@ -42,7 +43,7 @@ import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import { createRelayPatch, getRelayCardState } from "./relay-config";
+import { createRelayPatch, getRelayCardState, getRelayMutationViewState } from "./relay-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
   getHostRuntimeStore,
@@ -979,18 +980,25 @@ function RelayEnabledCard({ serverId }: { serverId: string }) {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const { config, patchConfig } = useDaemonConfig(serverId);
 
+  const mutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      const result = await patchConfig(createRelayPatch(next));
+      if (!result) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      return result;
+    },
+  });
+  const mutationView = getRelayMutationViewState({
+    isPending: mutation.isPending,
+    error: mutation.error,
+  });
+
   const handleValueChange = useCallback(
     (next: boolean) => {
-      void patchConfig(createRelayPatch(next)).catch((error) => {
-        // The daemon rejects this when relay is pinned by PASEO_RELAY_ENABLED or
-        // a CLI flag, and its message names the override to remove.
-        Alert.alert(
-          t("settings.host.relay.updateFailedTitle"),
-          error instanceof Error ? error.message : String(error),
-        );
-      });
+      mutation.mutate(next);
     },
-    [patchConfig, t],
+    [mutation],
   );
 
   const { isVisible, isEnabled } = getRelayCardState({ isConnected, config: config ?? null });
@@ -1002,11 +1010,18 @@ function RelayEnabledCard({ serverId }: { serverId: string }) {
         <View style={settingsStyles.rowContent}>
           <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.relay.hint")}</Text>
+          {mutationView.errorText ? (
+            <Text style={settingsStyles.rowError} testID="host-page-relay-error">
+              {mutationView.errorText}
+            </Text>
+          ) : null}
         </View>
         <Switch
           value={isEnabled}
           onValueChange={handleValueChange}
+          disabled={mutationView.isSwitchDisabled}
           accessibilityLabel={t("settings.host.relay.accessibilityLabel")}
+          testID="host-page-relay-switch"
         />
       </View>
     </View>

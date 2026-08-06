@@ -2048,7 +2048,6 @@ export const en = {
         title: "Relay",
         hint: "Lets paired devices reach this host from anywhere. The daemon keeps an outbound connection to the relay while this is on. Traffic stays end-to-end encrypted; the relay sees only connection metadata.",
         accessibilityLabel: "Relay connection",
-        updateFailedTitle: "Unable to change relay",
       },
       orchestration: {
         title: "Orchestration",

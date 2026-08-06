@@ -106,20 +106,20 @@ async function verifyArchiveIntegrity(archivePath: string, expectedSha256: strin
   throw new ModelArchiveIntegrityError(archivePath, expectedSha256, actual);
 }
 
-async function extractTarArchive(archivePath: string, destDir: string): Promise<void> {
+/** Exported for tests: the invocation has to work on whatever tar the platform ships. */
+export async function extractTarArchive(archivePath: string, destDir: string): Promise<void> {
   await mkdir(destDir, { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
-    // Absolute paths and `../` entries are stripped rather than trusted. The
-    // digest check above already establishes the archive is the one we pinned,
-    // so this is belt-and-braces against a future catalog entry.
-    const child = spawnProcess(
-      "tar",
-      ["xf", archivePath, "-C", destDir, "--no-absolute-names", "--no-overwrite-dir"],
-      {
-        stdio: "inherit",
-      },
-    );
+    // Plain `xf`, no hardening flags. `--no-absolute-names` is rejected by
+    // bsdtar (macOS) *and* by GNU tar 1.35, so adding it broke extraction on
+    // every platform. It was redundant anyway: both implementations strip
+    // leading `/` and `../` from member names unless you pass -P, so a plain
+    // extract already cannot escape destDir. The pinned digest verified above
+    // is the control that matters here.
+    const child = spawnProcess("tar", ["xf", archivePath, "-C", destDir], {
+      stdio: "inherit",
+    });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();

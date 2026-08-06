@@ -2056,7 +2056,6 @@ export const ja: TranslationResources = {
         title: "リレー",
         hint: "ペアリング済みのデバイスがどこからでもこのホストに接続できるようになります。有効な間、デーモンはリレーへの送信接続を維持します。通信はエンドツーエンドで暗号化されたままで、リレーには接続のメタデータしか見えません。",
         accessibilityLabel: "リレー接続",
-        updateFailedTitle: "リレーを変更できません",
       },
       orchestration: {
         title: "オーケストレーション",

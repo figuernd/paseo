@@ -291,7 +291,7 @@ beforeAll(async () => {
   daemonHandle = await createTestPaseoDaemon({
     agentClients: createRecordingAgentClients(),
     // Suite B drives PTYs through the tool catalog, which is opt-in.
-    allowTerminalTools: true,
+    allowDaemonExecution: true,
   });
   topLevelClient = await createMcpClient(
     `http://127.0.0.1:${daemonHandle.port}/mcp/agents`,

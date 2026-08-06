@@ -2071,7 +2071,6 @@ export const ptBR: TranslationResources = {
         title: "Relay",
         hint: "Permite que dispositivos pareados alcancem este host de qualquer lugar. O daemon mantém uma conexão de saída com o relay enquanto isso estiver ativado. O tráfego continua criptografado de ponta a ponta; o relay vê apenas metadados de conexão.",
         accessibilityLabel: "Conexão de relay",
-        updateFailedTitle: "Não foi possível alterar o relay",
       },
       orchestration: {
         title: "Orquestração",

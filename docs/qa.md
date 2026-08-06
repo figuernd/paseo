@@ -17,8 +17,7 @@ Evidence is something someone else can look at:
 
 - The commands you ran, pasted with their output
 - The tests you added and their results
-- Before and after screenshots
-- A video of the interaction
+- Before and after screenshots, or a video of the interaction, if you have them
 - Logs, requests, responses
 
 Redact what you need to, keep the technical details. If an agent did the work, submit its raw output. A summary drops the details someone else needs to check it.

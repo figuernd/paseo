@@ -53,7 +53,6 @@ Here is the criteria I use to decide:
 - Explains the problem you're solving
 - QA evidence
 - Automated tests
-- Screenshots or video for UI changes, on every affected platform
 - Says which platforms you tested and which you didn't
 - Maintainer edits enabled
 
@@ -85,11 +84,10 @@ What's accepted:
 
 - The shell commands you ran, pasted with their output
 - The tests you added and their results
-- Before and after screenshots
-- A video of the whole interaction
+- Before and after screenshots, or a video of the interaction, if you have them
 - Logs, requests, responses
 
-Bugs and features both need automated tests, and the tests have to exercise the real thing. UI changes need a video, or a screenshot if it's static.
+Bugs and features both need automated tests, and the tests have to exercise the real thing. Screenshots and video are welcome for UI changes but are not required; say which platforms you exercised and how.
 
 The [QA guide](docs/qa.md) covers what to check for each of these and the tooling to do it.
 
@@ -121,7 +119,7 @@ Writing a review is very time consuming and Paseo receives a lot of PRs, I canno
 
 It depends on what else is going on. QA takes longer than reading the diff. You are welcome to join Discord to ask.
 
-### Why do you want tests and a video for a small change?
+### Why do you want tests for a small change?
 
 Because it's faster and safer than me checking out and running every PR myself to test it manually.
 

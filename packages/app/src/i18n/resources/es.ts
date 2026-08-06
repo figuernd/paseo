@@ -2087,7 +2087,6 @@ export const es: TranslationResources = {
         title: "Relé",
         hint: "Permite que los dispositivos emparejados alcancen este host desde cualquier lugar. El daemon mantiene una conexión saliente con el relé mientras esto esté activado. El tráfico sigue cifrado de extremo a extremo; el relé solo ve metadatos de conexión.",
         accessibilityLabel: "Conexión de relé",
-        updateFailedTitle: "No se pudo cambiar el relé",
       },
       orchestration: {
         title: "Orquestación",
