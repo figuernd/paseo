@@ -583,7 +583,8 @@ export async function createPaseoDaemon(
   // clients — so it cannot be replayed off-box. This lets the injected MCP
   // authenticate even when the daemon password is set via the app (hash only,
   // no plaintext available). Mirrors the /api/files/download capability-token
-  // pattern.
+  // pattern. Required on every /mcp/agents request, including when no daemon
+  // password is configured — see isAgentMcpRequestAuthorized.
   const agentMcpAuthToken = randomUUID();
 
   const listenTarget = parseListenString(config.listen);

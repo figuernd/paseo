@@ -74,14 +74,43 @@ describe("daemon bearer validator", () => {
 describe("agent MCP request authorizer", () => {
   const CAPABILITY_TOKEN = "cap-token-abc123";
 
-  test("allows any request when no daemon password is configured", async () => {
+  test("requires the capability token when no daemon password is configured", async () => {
+    // The endpoint exposes the full Paseo tool catalog, so an unauthenticated
+    // daemon must not leave it open to anything that can reach the socket.
     expect(
       await isAgentMcpRequestAuthorized({
         password: undefined,
         capabilityToken: CAPABILITY_TOKEN,
         authorizationHeader: undefined,
       }),
+    ).toBe(false);
+    expect(
+      await isAgentMcpRequestAuthorized({
+        password: undefined,
+        capabilityToken: CAPABILITY_TOKEN,
+        authorizationHeader: "Bearer wrong-token",
+      }),
+    ).toBe(false);
+  });
+
+  test("accepts the capability token when no daemon password is configured", async () => {
+    expect(
+      await isAgentMcpRequestAuthorized({
+        password: undefined,
+        capabilityToken: CAPABILITY_TOKEN,
+        authorizationHeader: `Bearer ${CAPABILITY_TOKEN}`,
+      }),
     ).toBe(true);
+  });
+
+  test("rejects everything when no capability token exists and no password is set", async () => {
+    expect(
+      await isAgentMcpRequestAuthorized({
+        password: undefined,
+        capabilityToken: null,
+        authorizationHeader: `Bearer ${CAPABILITY_TOKEN}`,
+      }),
+    ).toBe(false);
   });
 
   test("accepts the injected capability token", async () => {
