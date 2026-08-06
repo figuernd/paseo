@@ -17,7 +17,9 @@ on:
 
 jobs:
   deploy:
-    if: ${{ github.event_name != 'release' || (!github.event.release.prerelease && !github.event.release.draft) }}
+    # Fork guard: this repository is a fork, and this workflow publishes/deploys upstream
+    # artifacts it has no credentials or need for. Skipped here, unchanged upstream.
+    if: ${{ github.repository == 'getpaseo/paseo' && (github.event_name != 'release' || (!github.event.release.prerelease && !github.event.release.draft)) }}
     runs-on: ubuntu-latest
 
     steps:
