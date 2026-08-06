@@ -69,3 +69,6 @@ relay:
 
 cli:
   - "packages/cli/**"
+
+connector:
+  - "packages/connector/**"

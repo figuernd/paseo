@@ -86,6 +86,24 @@ For remote access, use the relay connection. It is the supported path for reachi
 
 Host header validation and CORS origin checks are defense-in-depth controls for localhost exposure. They help block DNS rebinding and browser-based attacks, but they do not replace network isolation.
 
+## Claude connector trust boundary
+
+The connector (`packages/connector`) is the one Paseo component designed to be published on the
+internet. It exposes an OAuth 2.1-protected MCP endpoint to Claude and holds connections — including
+relay keys — to every daemon you configure. Treat it as a trusted client of those daemons, at the
+same authority level as your phone.
+
+Claude authenticates with OAuth 2.1: dynamic client registration, PKCE with S256, exact redirect-URI
+matching, and tokens bound to the connector's resource identifier. Registration is deliberately open
+because registering grants nothing; a token is issued only after the approval page accepts your
+pairing code. That code is therefore the whole boundary. Anyone who has it can start agents on every
+configured host. Access tokens expire in an hour, refresh tokens rotate on use, and both are
+persisted as SHA-256 hashes so the state file cannot be replayed.
+
+The connector adds no sandbox of its own. An agent it starts has exactly the authority that daemon's
+local clients already have. Run the connector behind TLS you control, and do not expose it if you
+would not also expose the daemons behind it.
+
 ## DNS rebinding protection
 
 CORS is not a complete security boundary. It controls which browser origins can make requests, but does not prevent a malicious website from resolving its domain to your local machine (DNS rebinding).

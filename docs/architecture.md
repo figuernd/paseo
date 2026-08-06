@@ -149,6 +149,13 @@ The production relay server lives in [getpaseo/paseo-relay](https://github.com/g
 
 See [SECURITY.md](../SECURITY.md) for the full threat model.
 
+### `packages/connector` — Claude connector
+
+An optional bridge that exposes a public OAuth-protected MCP endpoint to Claude and fans out to
+several daemons at once, reaching each one over direct TCP or the relay. It drives hosts through
+`tools.catalog.*` on the session protocol rather than a daemon's HTTP MCP route, so both transports
+use one path. See [connector.md](connector.md).
+
 ### Paseo Hub
 
 The optional Hub relationship is daemon-outbound and does not use the relay. Its connection,

@@ -2538,7 +2538,48 @@ export const HubExecutionControlRequestSchema = z.object({
 
 export type HubExecutionControlRequest = z.infer<typeof HubExecutionControlRequestSchema>;
 
+// The Paseo tool catalog over WebSocket. The same catalog is already reachable over HTTP at
+// /mcp/agents, but that route only exists for clients that can open a TCP connection to the
+// daemon. Relay-connected clients cannot, and the relay carries WebSocket frames only, so a
+// bridge that fans out across hosts needs the catalog on the session protocol to reach every
+// host the same way. Trusted clients can already create agents and drive terminals, so
+// exposing the catalog to them grants no authority they did not already hold.
+export const PaseoToolDescriptorSchema = z.object({
+  name: z.string(),
+  title: z.string().optional(),
+  description: z.string(),
+  // JSON Schema for the tool arguments, serialized by the daemon that owns the tool.
+  inputSchema: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type PaseoToolDescriptor = z.infer<typeof PaseoToolDescriptorSchema>;
+
+const PaseoToolResultContentSchema = z
+  .object({
+    type: z.string(),
+    text: z.string().optional(),
+  })
+  .passthrough();
+
+export const ToolsCatalogListRequestSchema = z.object({
+  type: z.literal("tools.catalog.list.request"),
+  requestId: z.string(),
+});
+
+export type ToolsCatalogListRequest = z.infer<typeof ToolsCatalogListRequestSchema>;
+
+export const ToolsCatalogCallRequestSchema = z.object({
+  type: z.literal("tools.catalog.call.request"),
+  requestId: z.string(),
+  name: z.string(),
+  arguments: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type ToolsCatalogCallRequest = z.infer<typeof ToolsCatalogCallRequestSchema>;
+
 export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
+  ToolsCatalogListRequestSchema,
+  ToolsCatalogCallRequestSchema,
   HubExecutionAgentCreateRequestSchema,
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
@@ -2882,6 +2923,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonStatusRpc: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         relayConfig: z.boolean().optional(),
+        // COMPAT(toolsCatalogRpc): added in v0.3.0, remove gate after 2027-08-06.
+        toolsCatalogRpc: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.
@@ -4429,6 +4472,27 @@ export const CheckoutPrMergeResponseSchema = z.object({
   }),
 });
 
+export const ToolsCatalogListResponseSchema = z.object({
+  type: z.literal("tools.catalog.list.response"),
+  payload: z.object({
+    requestId: z.string(),
+    tools: z.array(PaseoToolDescriptorSchema),
+    error: z.string().nullable(),
+  }),
+});
+
+export const ToolsCatalogCallResponseSchema = z.object({
+  type: z.literal("tools.catalog.call.response"),
+  payload: z.object({
+    requestId: z.string(),
+    content: z.array(PaseoToolResultContentSchema),
+    structuredContent: z.record(z.string(), z.unknown()).optional(),
+    // isError is the tool reporting a failed call; error is the catalog failing to run it.
+    isError: z.boolean().optional(),
+    error: z.string().nullable(),
+  }),
+});
+
 export const CheckoutForgeSetAutoMergeResponseSchema = z.object({
   type: z.literal("checkout.forge.set_auto_merge.response"),
   payload: z.object({
@@ -5487,6 +5551,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   CheckoutRefreshResponseSchema,
   CheckoutPrCreateResponseSchema,
   CheckoutPrMergeResponseSchema,
+  ToolsCatalogListResponseSchema,
+  ToolsCatalogCallResponseSchema,
   CheckoutForgeSetAutoMergeResponseSchema,
   CheckoutGithubSetAutoMergeResponseSchema,
   CheckoutCommitsListResponseSchema,
@@ -5847,6 +5913,11 @@ export type CheckoutPrCreateResponse = z.infer<typeof CheckoutPrCreateResponseSc
 export type CheckoutPrMergeRequest = z.infer<typeof CheckoutPrMergeRequestSchema>;
 export type CheckoutPrMergeResponse = z.infer<typeof CheckoutPrMergeResponseSchema>;
 export type CheckoutPrMergeMethod = z.infer<typeof CheckoutPrMergeRequestSchema>["mergeMethod"];
+export type ToolsCatalogListResponse = z.infer<typeof ToolsCatalogListResponseSchema>;
+export type ToolsCatalogCallResponse = z.infer<typeof ToolsCatalogCallResponseSchema>;
+export type ToolsCatalogListPayload = ToolsCatalogListResponse["payload"];
+export type ToolsCatalogCallPayload = ToolsCatalogCallResponse["payload"];
+
 export type CheckoutForgeSetAutoMergeRequest = z.infer<
   typeof CheckoutForgeSetAutoMergeRequestSchema
 >;

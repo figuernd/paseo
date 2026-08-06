@@ -12,6 +12,7 @@ This is an npm workspace monorepo:
 - `packages/app` — Mobile + web client (Expo)
 - `packages/cli` — Docker-style CLI (`paseo run/ls/logs/wait`)
 - `packages/relay` — E2E encrypted relay for remote access
+- `packages/connector` — Remote MCP bridge that lets Claude drive agents across hosts ([docs/connector.md](docs/connector.md))
 - `packages/desktop` — Electron desktop wrapper
 - `packages/website` — Marketing site (paseo.sh)
 
@@ -38,6 +39,7 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 | [docs/expo-router.md](docs/expo-router.md)                         | Expo Router route ownership, startup restore, and native blank-screen gotchas                                                  |
 | [docs/file-icons.md](docs/file-icons.md)                           | Material icon theme integration for the file explorer                                                                          |
 | [docs/providers.md](docs/providers.md)                             | Adding a new agent provider end-to-end                                                                                         |
+| [docs/connector.md](docs/connector.md)                             | Claude connector — the remote MCP bridge that drives agents across hosts from Claude, including voice mode                     |
 | [docs/forge-providers.md](docs/forge-providers.md)                 | Adding a git forge: registry/manifest, drop-in checklist, self-host/GHES, the two facts tiers                                  |
 | [docs/custom-providers.md](docs/custom-providers.md)               | Custom provider config: Z.AI, Alibaba/Qwen, ACP agents, profiles, custom binaries                                              |
 | [docs/service-proxy.md](docs/service-proxy.md)                     | Service proxy: exposing workspace scripts at public URLs, DNS setup, reverse proxy config                                      |

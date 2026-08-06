@@ -36,6 +36,7 @@ jobs:
       browser: ${{ steps.filter.outputs.browser }}
       relay: ${{ steps.filter.outputs.relay }}
       cli: ${{ steps.filter.outputs.cli }}
+      connector: ${{ steps.filter.outputs.connector }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -428,6 +429,30 @@ jobs:
 
       - name: Run relay tests
         run: npm run test --workspace=@getpaseo/relay
+
+  connector-tests:
+    name: connector-tests
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.connector != 'false') }}
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - name: Build client stack
+        run: npm run build:client
+
+      - name: Run connector tests
+        run: npm run test --workspace=@getpaseo/connector
 
   cli-tests-1:
     name: cli-tests (shard 1/3)
