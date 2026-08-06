@@ -9,9 +9,10 @@ import type {
 import { createConnectorTools, toTitle, type ConnectorTool } from "./voice-tools.js";
 
 /**
- * A stand-in for one daemon's tool catalog. It answers the same tool names with the same payload
- * shapes the real catalog returns, and records what it was called with, which is what these tests
- * are actually about: the connector resolves spoken references and forwards the right arguments.
+ * A stand-in for one daemon's tool catalog. Payload shapes here are the daemon's real ones, taken
+ * from the schemas the catalog serializes: providers carry `enabled`/`status` (never `available`
+ * or a default model), models carry `isDefault`, and agents carry a real lifecycle status. A fake
+ * that answers in a shape the daemon never produces proves nothing.
  */
 class FakeHost implements HostHandle {
   readonly calls: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -23,6 +24,7 @@ class FakeHost implements HostHandle {
       workspaces?: Array<Record<string, unknown>>;
       permissions?: Array<Record<string, unknown>>;
       providers?: Array<Record<string, unknown>>;
+      models?: Array<Record<string, unknown>>;
       offline?: boolean;
     } = {},
   ) {}
@@ -61,6 +63,14 @@ class FakeHost implements HostHandle {
         return { content: [], structuredContent: { permissions: this.state.permissions ?? [] } };
       case "list_providers":
         return { content: [], structuredContent: { providers: this.state.providers ?? [] } };
+      case "list_models":
+        return {
+          content: [],
+          structuredContent: {
+            provider: String(args.provider ?? ""),
+            models: this.state.models ?? [],
+          },
+        };
       case "create_agent":
         return {
           content: [],
@@ -109,15 +119,54 @@ const runningAgent = {
   requiresAttention: false,
 };
 
+// Blocked on a permission. The daemon parks the agent at `idle` and signals through
+// requiresAttention/attentionReason — there is no "waiting" or "blocked" lifecycle status.
 const blockedAgent = {
   id: "agt_02website",
   shortId: "c3d4",
   title: "Website copy",
-  status: "waiting",
+  status: "idle",
   cwd: "/repos/website",
   requiresAttention: true,
   attentionReason: "permission",
 };
+
+// A completed agent looks exactly like the blocked one except for its reason, which is why
+// filtering on a status called "finished" silently kept every one of these.
+const finishedAgent = {
+  id: "agt_03changelog",
+  shortId: "e5f6",
+  title: "Changelog tidy",
+  status: "idle",
+  cwd: "/repos/paseo",
+  requiresAttention: false,
+  attentionReason: null,
+};
+
+const readyProvider = {
+  id: "claude",
+  label: "Claude Code",
+  description: "",
+  enabled: true,
+  status: "available",
+  modes: [],
+};
+
+const claudeModels = [
+  { provider: "claude", id: "sonnet", label: "Sonnet", isDefault: false },
+  { provider: "claude", id: "opus", label: "Opus", isDefault: true },
+];
+
+const oneWorkspace = [
+  {
+    workspaceId: "ws-1",
+    projectId: "prj-1",
+    cwd: "/repos/paseo",
+    isolation: "local",
+    kind: "directory",
+    title: "paseo",
+  },
+];
 
 describe("list_hosts", () => {
   test("names each host and whether it is online", async () => {
@@ -143,7 +192,7 @@ describe("list_work", () => {
     );
     const result = await toolNamed(registry, "list_work").handler({});
     expect(result.text).toBe(
-      "1 agent needs you: Website copy (permission). 2 agents: Auth refactor on laptop is running; Website copy on mac mini is waiting.",
+      "1 agent needs you: Website copy (permission). 2 agents: Auth refactor on laptop is still working; Website copy on mac mini is waiting on your approval.",
     );
   });
 
@@ -157,9 +206,54 @@ describe("list_work", () => {
     expect(result.structured?.unreachable).toEqual(["vps (vps is unreachable)"]);
   });
 
-  test("says nothing is running when every agent has finished", async () => {
+  test("an idle agent that already finished is not reported as running", async () => {
+    const registry = registryOf(new FakeHost("laptop", { agents: [finishedAgent] }));
+    const result = await toolNamed(registry, "list_work").handler({});
+    expect(result.text).toBe("Nothing is running right now.");
+  });
+
+  test("includeFinished brings the completed agents back", async () => {
+    const registry = registryOf(new FakeHost("laptop", { agents: [finishedAgent] }));
+    const result = await toolNamed(registry, "list_work").handler({ includeFinished: true });
+    expect(result.text).toBe("1 agent: Changelog tidy on laptop is idle.");
+  });
+
+  // Lifecycle names are for the UI. Spoken back, "idle" about a blocked agent is actively wrong.
+  test("states are spoken in plain language, not lifecycle names", async () => {
     const registry = registryOf(
-      new FakeHost("laptop", { agents: [{ ...runningAgent, status: "finished" }] }),
+      new FakeHost("laptop", {
+        agents: [
+          runningAgent,
+          { ...finishedAgent, requiresAttention: true, attentionReason: "finished" },
+        ],
+      }),
+    );
+    const result = await toolNamed(registry, "list_work").handler({});
+    expect(result.text).toContain("Auth refactor on laptop is still working");
+    expect(result.text).toContain("Changelog tidy on laptop is finished");
+  });
+
+  test("an idle agent still waiting on the user is active", async () => {
+    const registry = registryOf(new FakeHost("laptop", { agents: [blockedAgent] }));
+    const result = await toolNamed(registry, "list_work").handler({});
+    expect(result.text).toBe(
+      "1 agent needs you: Website copy (permission). 1 agent: Website copy on laptop is waiting on your approval.",
+    );
+  });
+
+  test("an errored agent counts as needing the user even without the attention flag", async () => {
+    const registry = registryOf(
+      new FakeHost("laptop", { agents: [{ ...finishedAgent, status: "error" }] }),
+    );
+    const result = await toolNamed(registry, "list_work").handler({});
+    expect(result.text).toContain("1 agent needs you: Changelog tidy");
+  });
+
+  test("an archived agent is never active", async () => {
+    const registry = registryOf(
+      new FakeHost("laptop", {
+        agents: [{ ...runningAgent, archivedAt: "2026-08-01T00:00:00.000Z" }],
+      }),
     );
     const result = await toolNamed(registry, "list_work").handler({});
     expect(result.text).toBe("Nothing is running right now.");
@@ -185,7 +279,8 @@ describe("start_work", () => {
           kind: "directory",
         },
       ],
-      providers: [{ id: "claude", available: true, defaultModel: "opus" }],
+      providers: [readyProvider],
+      models: claudeModels,
     });
     const result = await toolNamed(registryOf(host), "start_work").handler({
       task: "Rip out the legacy session cookie and migrate everyone to tokens.",
@@ -213,17 +308,121 @@ describe("start_work", () => {
     );
   });
 
-  test("uses the only host without being told which one", async () => {
-    const host = new FakeHost("laptop", { providers: [{ id: "codex", available: true }] });
+  test("uses the only host and the only workspace without being told which", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: oneWorkspace,
+      providers: [readyProvider],
+      models: claudeModels,
+    });
     await toolNamed(registryOf(host), "start_work").handler({ task: "run the tests" });
-    expect(host.calls.find((call) => call.name === "create_agent")?.args.provider).toBe("codex");
+    expect(host.calls.find((call) => call.name === "create_agent")?.args).toMatchObject({
+      workspaceId: "ws-1",
+      provider: "claude/opus",
+    });
   });
 
-  test("refuses to start when the host has no usable provider", async () => {
-    const host = new FakeHost("laptop", { providers: [{ id: "claude", available: false }] });
-    await expect(toolNamed(registryOf(host), "start_work").handler({ task: "x" })).rejects.toThrow(
-      /no available agent provider/,
+  // create_agent takes provider/model and rejects a bare id, and the default model is only
+  // discoverable through list_models — not from the provider record.
+  test("pairs the provider with its default model from list_models", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: oneWorkspace,
+      providers: [readyProvider],
+      models: claudeModels,
+    });
+    await toolNamed(registryOf(host), "start_work").handler({ task: "x" });
+    expect(host.calls.find((call) => call.name === "list_models")?.args).toEqual({
+      provider: "claude",
+    });
+    expect(host.calls.find((call) => call.name === "create_agent")?.args.provider).toBe(
+      "claude/opus",
     );
+  });
+
+  test("falls back to the first model when none is marked default", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: oneWorkspace,
+      providers: [readyProvider],
+      models: [{ provider: "claude", id: "sonnet", isDefault: false }],
+    });
+    await toolNamed(registryOf(host), "start_work").handler({ task: "x" });
+    expect(host.calls.find((call) => call.name === "create_agent")?.args.provider).toBe(
+      "claude/sonnet",
+    );
+  });
+
+  test("skips a disabled provider and picks a ready one", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: oneWorkspace,
+      providers: [
+        { ...readyProvider, id: "codex", enabled: false },
+        { ...readyProvider, id: "claude" },
+      ],
+      models: claudeModels,
+    });
+    await toolNamed(registryOf(host), "start_work").handler({ task: "x" });
+    expect(host.calls.find((call) => call.name === "create_agent")?.args.provider).toBe(
+      "claude/opus",
+    );
+  });
+
+  test("refuses to start when no provider is signed in, naming their states", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: oneWorkspace,
+      providers: [
+        { ...readyProvider, id: "claude", status: "unauthenticated" },
+        { ...readyProvider, id: "codex", enabled: false, status: "available" },
+      ],
+    });
+    await expect(toolNamed(registryOf(host), "start_work").handler({ task: "x" })).rejects.toThrow(
+      /no ready agent provider: claude \(unauthenticated\), codex \(disabled\)/,
+    );
+  });
+
+  test("refuses to start when the ready provider reports no models", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: oneWorkspace,
+      providers: [readyProvider],
+      models: [],
+    });
+    await expect(toolNamed(registryOf(host), "start_work").handler({ task: "x" })).rejects.toThrow(
+      /reports no models for claude/,
+    );
+  });
+
+  // Omitting workspaceId makes the daemon open a workspace at its own process directory, which is
+  // almost never where the user meant.
+  test("asks which workspace when the host has several and none was named", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: [
+        ...oneWorkspace,
+        {
+          workspaceId: "ws-2",
+          projectId: "prj-2",
+          cwd: "/repos/website",
+          isolation: "local",
+          kind: "directory",
+          title: null,
+        },
+      ],
+      providers: [readyProvider],
+      models: claudeModels,
+    });
+    await expect(toolNamed(registryOf(host), "start_work").handler({ task: "x" })).rejects.toThrow(
+      /laptop has 2 workspaces: paseo, website\. Ask which one before starting work\./,
+    );
+    expect(host.calls.some((call) => call.name === "create_agent")).toBe(false);
+  });
+
+  test("refuses to start when the host has no workspace at all", async () => {
+    const host = new FakeHost("laptop", {
+      workspaces: [],
+      providers: [readyProvider],
+      models: claudeModels,
+    });
+    await expect(toolNamed(registryOf(host), "start_work").handler({ task: "x" })).rejects.toThrow(
+      /laptop has no workspaces to work in/,
+    );
+    expect(host.calls.some((call) => call.name === "create_agent")).toBe(false);
   });
 
   test("asks which workspace when the name matches two", async () => {
@@ -244,7 +443,8 @@ describe("start_work", () => {
           kind: "directory",
         },
       ],
-      providers: [{ id: "claude", available: true }],
+      providers: [readyProvider],
+      models: claudeModels,
     });
     await expect(
       toolNamed(registryOf(host), "start_work").handler({ task: "x", workspace: "api" }),
@@ -288,7 +488,7 @@ describe("agent-targeted tools", () => {
       agent: "website copy",
     });
     expect(result.text).toBe(
-      "Website copy on mac mini is waiting and needs you (permission). Ran the test suite. 3 failures left.",
+      "Website copy on mac mini is waiting on your approval. Ran the test suite. 3 failures left.",
     );
   });
 
@@ -337,7 +537,7 @@ describe("agent-targeted tools", () => {
 describe("permissions", () => {
   const permission = {
     agentId: "agt_02website",
-    status: "waiting",
+    status: "idle",
     request: { requestId: "req-9", title: "Run `rm -rf build`" },
   };
 
@@ -345,6 +545,38 @@ describe("permissions", () => {
     const registry = registryOf(new FakeHost("mac mini", { permissions: [permission] }));
     const result = await toolNamed(registry, "list_permissions").handler({});
     expect(result.text).toBe("1 approval waiting: Run `rm -rf build` on mac mini.");
+  });
+
+  // An "all clear" the user acts on has to mean every host was actually asked. A host we could
+  // not reach may be holding a blocked agent.
+  test("an unreachable host is never reported as nothing waiting", async () => {
+    const registry = registryOf(
+      new FakeHost("laptop", { permissions: [] }),
+      new FakeHost("vps", { offline: true }),
+    );
+    const result = await toolNamed(registry, "list_permissions").handler({});
+    expect(result.text).toBe(
+      "Nothing is waiting on your approval. Could not check vps (vps is unreachable), so there may be more.",
+    );
+    expect(result.structured?.unreachable).toEqual(["vps (vps is unreachable)"]);
+  });
+
+  test("an unreachable host is flagged alongside the approvals that were found", async () => {
+    const registry = registryOf(
+      new FakeHost("mac mini", { permissions: [permission] }),
+      new FakeHost("vps", { offline: true }),
+    );
+    const result = await toolNamed(registry, "list_permissions").handler({});
+    expect(result.text).toBe(
+      "1 approval waiting: Run `rm -rf build` on mac mini. Could not check vps (vps is unreachable), so there may be more.",
+    );
+  });
+
+  test("a named host that cannot be reached fails instead of answering for it", async () => {
+    const registry = registryOf(new FakeHost("vps", { offline: true }));
+    await expect(toolNamed(registry, "list_permissions").handler({ host: "vps" })).rejects.toThrow(
+      /vps is unreachable/,
+    );
   });
 
   test("answer_permission sends an allow for the matching request", async () => {

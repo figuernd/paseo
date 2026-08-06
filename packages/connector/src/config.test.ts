@@ -16,9 +16,11 @@ function load(options: { file?: unknown; env?: NodeJS.ProcessEnv }) {
   });
 }
 
+const STRONG_CODE = "Qk7pR2vL9wXz4mNb8sTy6HdF";
+
 const minimal = {
   publicUrl: "https://paseo.example.com",
-  pairingCode: "s3cret",
+  pairingCode: STRONG_CODE,
   hosts: [{ name: "laptop", endpoint: "tcp://127.0.0.1:6767" }],
 };
 
@@ -78,12 +80,12 @@ describe("resolveConnectorConfig", () => {
       env: {
         PASEO_CONNECTOR_LISTEN: "0.0.0.0:9000",
         PASEO_CONNECTOR_PUBLIC_URL: "https://other.example.com",
-        PASEO_CONNECTOR_PAIRING_CODE: "from-env",
+        PASEO_CONNECTOR_PAIRING_CODE: "fR0m3nv-Wq8xLc2vNb5tYzHd",
       },
     });
     expect(config.listen).toEqual({ host: "0.0.0.0", port: 9000 });
     expect(config.publicUrl).toBe("https://other.example.com");
-    expect(config.pairingCode).toBe("from-env");
+    expect(config.pairingCode).toBe("fR0m3nv-Wq8xLc2vNb5tYzHd");
   });
 
   test("a missing config file is reported as missing settings, not as a crash", () => {
@@ -94,6 +96,30 @@ describe("resolveConnectorConfig", () => {
     expect(() => load({ file: { publicUrl: "https://paseo.example.com", hosts: [] } })).toThrow(
       /No pairingCode configured/,
     );
+  });
+
+  // The pairing code is the only secret between the public internet and every configured host,
+  // so a guessable one has to be refused at startup rather than trusted to rate limiting alone.
+  test("refuses a short pairing code and says how to make one", () => {
+    expect(() => load({ file: { ...minimal, pairingCode: "hunter2" } })).toThrow(
+      /at least 24 characters \(got 7\).*openssl rand -base64 24/s,
+    );
+  });
+
+  test("refuses a long code with too little variety", () => {
+    expect(() => load({ file: { ...minimal, pairingCode: "abababababababababababab" } })).toThrow(
+      /repeats too few distinct characters/,
+    );
+  });
+
+  test("a code supplied by environment is held to the same bar", () => {
+    expect(() => load({ file: minimal, env: { PASEO_CONNECTOR_PAIRING_CODE: "short" } })).toThrow(
+      /at least 24 characters/,
+    );
+  });
+
+  test("accepts a code of the shape the docs tell you to generate", () => {
+    expect(load({ file: { ...minimal, pairingCode: STRONG_CODE } }).pairingCode).toBe(STRONG_CODE);
   });
 
   test("rejects a host that gives both an endpoint and an offer", () => {

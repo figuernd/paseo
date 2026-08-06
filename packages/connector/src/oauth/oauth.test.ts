@@ -12,7 +12,7 @@ import { createConnectorApp } from "../server.js";
 // The whole point of this suite is that a real MCP client can complete the real flow, so it runs
 // against a real listening server over real HTTP. Nothing here is mocked except the Paseo hosts,
 // which are irrelevant to authorization.
-const PAIRING_CODE = "correct-horse-battery";
+const PAIRING_CODE = "correct-horse-battery-staple-42";
 const REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback";
 
 const emptyRegistry: HostRegistry = {
@@ -148,6 +148,15 @@ function baseConfig(publicUrl: string): ConnectorConfig {
     configPath: path.join(workDir, "connector.json"),
   };
 }
+
+describe("health", () => {
+  // Public and unauthenticated: it must not hand out a map of the user's machines.
+  test("reports liveness without describing the hosts behind it", async () => {
+    const response = await fetch(`${origin}/health`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+});
 
 describe("discovery documents", () => {
   test("protected resource metadata points at this connector as its own authorization server", async () => {
@@ -315,6 +324,55 @@ describe("authorization", () => {
       }),
     });
     expect(replay.status).toBe(400);
+  });
+
+  // Registration is open, so an attacker can mint a fresh client_id per guess. The limiter has to
+  // key on something they cannot rotate, or the approval page is an open guessing oracle that
+  // pays out a 30-day refresh token.
+  test("repeated wrong pairing codes are throttled with a Retry-After", async () => {
+    const clientId = await registerClient();
+    const { challenge } = pkcePair();
+
+    let throttled: Response | undefined;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const response = await approve({ clientId, challenge, pairingCode: `guess-${attempt}` });
+      if (response.status === 429) {
+        throttled = response;
+        break;
+      }
+      expect(response.status).toBe(401);
+    }
+
+    expect(throttled).toBeDefined();
+    expect(Number((throttled as Response).headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(await (throttled as Response).text()).toContain("Too many failed attempts");
+  });
+
+  test("a throttled attacker cannot slip through with the right code either", async () => {
+    const clientId = await registerClient();
+    const { challenge } = pkcePair();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await approve({ clientId, challenge, pairingCode: `guess-${attempt}` });
+    }
+
+    const response = await approve({ clientId, challenge, pairingCode: PAIRING_CODE });
+    expect(response.status).toBe(429);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  test("rotating client_id does not reset the limiter", async () => {
+    const { challenge } = pkcePair();
+    let throttled = false;
+    for (let attempt = 0; attempt < 8 && !throttled; attempt++) {
+      const freshClient = await registerClient();
+      const response = await approve({
+        clientId: freshClient,
+        challenge,
+        pairingCode: `guess-${attempt}`,
+      });
+      throttled = response.status === 429;
+    }
+    expect(throttled).toBe(true);
   });
 
   test("a made-up bearer token is rejected", async () => {

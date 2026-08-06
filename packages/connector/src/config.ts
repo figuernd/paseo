@@ -86,6 +86,30 @@ export function normalizePublicUrl(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+/**
+ * The pairing code is the whole boundary between the public internet and full daemon authority,
+ * and it is typed into a page anyone can reach. Approval attempts are rate limited, but a code a
+ * human invented is still the weakest link, so refuse the ones that are guessable at all.
+ *
+ * 24 characters is the floor because that is roughly where even an all-lowercase passphrase clears
+ * 100 bits, and it is short enough to paste from `openssl rand -base64 24`.
+ */
+export const MIN_PAIRING_CODE_LENGTH = 24;
+
+export function assertStrongPairingCode(code: string): void {
+  const suggestion = "Generate one with: openssl rand -base64 24";
+  if (code.length < MIN_PAIRING_CODE_LENGTH) {
+    throw new Error(
+      `pairingCode must be at least ${MIN_PAIRING_CODE_LENGTH} characters (got ${code.length}). It is the only secret protecting every host this connector reaches. ${suggestion}`,
+    );
+  }
+  if (new Set(code).size < 8) {
+    throw new Error(
+      `pairingCode repeats too few distinct characters to be unguessable. ${suggestion}`,
+    );
+  }
+}
+
 export function resolveConnectorConfig(options?: {
   env?: NodeJS.ProcessEnv;
   readFile?: (filePath: string) => string;
@@ -121,6 +145,7 @@ export function resolveConnectorConfig(options?: {
       `No pairingCode configured. Set pairingCode in ${configPath} or PASEO_CONNECTOR_PAIRING_CODE; it is the only thing standing between the public internet and your agents.`,
     );
   }
+  assertStrongPairingCode(pairingCode);
 
   const names = new Set<string>();
   for (const host of parsed.hosts) {

@@ -22,7 +22,7 @@ import { createConnectorApp } from "./server.js";
  * the only stand-in — the daemon side of the same path is covered by the server package's
  * tools-catalog e2e.
  */
-const PAIRING_CODE = "pairing-code-for-tests";
+const PAIRING_CODE = "pairing-code-for-tests-8Xq2";
 const REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback";
 
 const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -51,7 +51,27 @@ const fakeHost: HostHandle = {
         return {
           content: [],
           structuredContent: {
-            providers: [{ id: "claude", available: true, defaultModel: "opus" }],
+            providers: [
+              {
+                id: "claude",
+                label: "Claude Code",
+                description: "",
+                enabled: true,
+                status: "available",
+                modes: [],
+              },
+            ],
+          },
+        };
+      case "list_models":
+        return {
+          content: [],
+          structuredContent: {
+            provider: String(args.provider ?? ""),
+            models: [
+              { provider: "claude", id: "sonnet", label: "Sonnet", isDefault: false },
+              { provider: "claude", id: "opus", label: "Opus", isDefault: true },
+            ],
           },
         };
       case "list_workspaces":

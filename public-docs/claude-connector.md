@@ -25,7 +25,7 @@ The connector is a small process you run once. It reaches every Paseo host you c
 {
   "version": 1,
   "publicUrl": "https://paseo.example.com",
-  "pairingCode": "generate-something-long-and-random",
+  "pairingCode": "paste-the-output-of-openssl-rand-base64-24",
   "hosts": [
     { "name": "laptop", "endpoint": "tcp://127.0.0.1:6767" },
     { "name": "mac mini", "offer": "https://app.paseo.sh/#offer=..." }
@@ -66,7 +66,13 @@ Anything the conversational tools do not cover — schedules, terminals, worktre
 
 ## Keep in mind
 
-Your pairing code is the only thing between the internet and your agents. Anyone who has it can start agents on every host you configured, with the same power those machines already give their local clients. Use a long random code, keep the connector behind TLS, and do not run it anywhere you would not run an exposed daemon.
+Your pairing code is the only thing between the internet and your agents. Anyone who has it can start agents on every host you configured, with the same power those machines already give their local clients. Generate it, do not invent it:
+
+```bash
+openssl rand -base64 24
+```
+
+The connector refuses to start on a code shorter than 24 characters, and rate limits failed approvals with a growing backoff. Keep it behind TLS, and do not run it anywhere you would not run an exposed daemon.
 
 Hosts running a Paseo daemon older than v0.3.0 are reported as needing an update — the connector talks to hosts over an RPC that older daemons do not have.
 

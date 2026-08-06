@@ -57,8 +57,11 @@ export function createConnectorApp(options: {
   app.disable("x-powered-by");
   app.use(oauth.router);
 
+  // Liveness only. This route is unauthenticated and publicly reachable, so it must not describe
+  // the hosts behind the connector — their names, internal hostnames, versions, and connection
+  // errors are a map of the user's machines. Authenticated callers get that from `list_hosts`.
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, hosts: registry.statuses() });
+    res.json({ ok: true });
   });
 
   const runMcpRequest = async (req: express.Request, res: express.Response): Promise<void> => {

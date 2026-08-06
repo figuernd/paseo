@@ -10,6 +10,95 @@ export interface OAuthOptions {
   pairingCode: string;
   statePath: string;
   store?: OAuthStore;
+  /** Injected so the throttle can be exercised without sleeping through its own backoff. */
+  now?: () => number;
+}
+
+/**
+ * The approval page is the one place a secret is checked, and it is reachable by anyone who can
+ * resolve the connector's name. Without a limiter, a public deployment is an open guessing oracle
+ * that pays out a 30-day refresh token.
+ *
+ * Attempts are counted per source address and, separately, globally: per-address alone is useless
+ * against a botnet, and global alone would let one attacker lock out the owner. The global bucket
+ * is deliberately looser so a distributed attack is slowed to a crawl rather than locking the
+ * owner out of their own connector for hours.
+ */
+const PER_CLIENT_FREE_ATTEMPTS = 5;
+const GLOBAL_FREE_ATTEMPTS = 50;
+const BASE_BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 15 * 60 * 1000;
+const ATTEMPT_WINDOW_MS = 60 * 60 * 1000;
+
+interface ThrottleBucket {
+  failures: number;
+  blockedUntil: number;
+  lastFailureAt: number;
+}
+
+export interface ApprovalThrottle {
+  /** Milliseconds the caller must wait, or 0 when the attempt may proceed. */
+  retryAfterMs(key: string): number;
+  recordFailure(key: string): void;
+  recordSuccess(key: string): void;
+}
+
+function backoffFor(failures: number, freeAttempts: number): number {
+  if (failures <= freeAttempts) {
+    return 0;
+  }
+  const overage = failures - freeAttempts;
+  return Math.min(BASE_BACKOFF_MS * 2 ** (overage - 1), MAX_BACKOFF_MS);
+}
+
+export function createApprovalThrottle(now: () => number): ApprovalThrottle {
+  const buckets = new Map<string, ThrottleBucket>();
+  const global: ThrottleBucket = { failures: 0, blockedUntil: 0, lastFailureAt: 0 };
+
+  function bucketFor(key: string): ThrottleBucket {
+    const existing = buckets.get(key);
+    if (existing) {
+      // A quiet hour clears the record so an honest typo does not compound forever.
+      if (now() - existing.lastFailureAt > ATTEMPT_WINDOW_MS) {
+        existing.failures = 0;
+        existing.blockedUntil = 0;
+      }
+      return existing;
+    }
+    const created: ThrottleBucket = { failures: 0, blockedUntil: 0, lastFailureAt: 0 };
+    buckets.set(key, created);
+    return created;
+  }
+
+  return {
+    retryAfterMs(key) {
+      const current = now();
+      if (
+        global.failures > GLOBAL_FREE_ATTEMPTS &&
+        current - global.lastFailureAt > ATTEMPT_WINDOW_MS
+      ) {
+        global.failures = 0;
+        global.blockedUntil = 0;
+      }
+      return Math.max(bucketFor(key).blockedUntil - current, global.blockedUntil - current, 0);
+    },
+    recordFailure(key) {
+      const current = now();
+      const bucket = bucketFor(key);
+      bucket.failures += 1;
+      bucket.lastFailureAt = current;
+      bucket.blockedUntil = current + backoffFor(bucket.failures, PER_CLIENT_FREE_ATTEMPTS);
+
+      global.failures += 1;
+      global.lastFailureAt = current;
+      global.blockedUntil = current + backoffFor(global.failures, GLOBAL_FREE_ATTEMPTS);
+    },
+    recordSuccess(key) {
+      buckets.delete(key);
+      global.failures = 0;
+      global.blockedUntil = 0;
+    },
+  };
 }
 
 export interface OAuthSubsystem {
@@ -147,6 +236,8 @@ export function createOAuthSubsystem(options: OAuthOptions): OAuthSubsystem {
   const store = options.store ?? createOAuthStore({ statePath: options.statePath });
   const issuer = options.publicUrl;
   const resourceIdentifier = `${options.publicUrl}${MCP_PATH}`;
+  const now = options.now ?? (() => Date.now());
+  const throttle = createApprovalThrottle(now);
   const router = express.Router();
 
   router.use(express.json({ limit: "1mb" }));
@@ -275,24 +366,46 @@ export function createOAuthSubsystem(options: OAuthOptions): OAuthSubsystem {
       res.status(400).send("Invalid authorization request.");
       return;
     }
+    const hidden = {
+      client_id: client.clientId,
+      redirect_uri: redirectUri,
+      code_challenge: body.code_challenge,
+      state: body.state ?? "",
+      resource: body.resource ?? resourceIdentifier,
+    };
+    // Keyed by source address rather than client_id: registration is open, so an attacker can
+    // mint a fresh client_id per guess and a client-keyed limiter would never fire.
+    const throttleKey = req.ip ?? req.socket.remoteAddress ?? "unknown";
+
+    const retryAfterMs = throttle.retryAfterMs(throttleKey);
+    if (retryAfterMs > 0) {
+      const seconds = Math.ceil(retryAfterMs / 1000);
+      res.status(429).setHeader("Retry-After", String(seconds));
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(
+        approvalPage({
+          clientName: client.clientName,
+          hidden,
+          error: `Too many failed attempts. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`,
+        }),
+      );
+      return;
+    }
+
     if (!body.pairingCode || !safeEqual(body.pairingCode, options.pairingCode)) {
+      throttle.recordFailure(throttleKey);
       res.status(401).setHeader("Content-Type", "text/html; charset=utf-8");
       res.send(
         approvalPage({
           clientName: client.clientName,
-          hidden: {
-            client_id: client.clientId,
-            redirect_uri: redirectUri,
-            code_challenge: body.code_challenge,
-            state: body.state ?? "",
-            resource: body.resource ?? resourceIdentifier,
-          },
+          hidden,
           error: "That pairing code is not right.",
         }),
       );
       return;
     }
 
+    throttle.recordSuccess(throttleKey);
     const code = store.issueCode({
       clientId: client.clientId,
       redirectUri,

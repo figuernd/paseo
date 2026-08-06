@@ -100,6 +100,14 @@ pairing code. That code is therefore the whole boundary. Anyone who has it can s
 configured host. Access tokens expire in an hour, refresh tokens rotate on use, and both are
 persisted as SHA-256 hashes so the state file cannot be replayed.
 
+Because the approval page is the one place a secret is checked and it is reachable by anyone who can
+resolve the connector's name, two controls are enforced rather than recommended. The connector
+refuses to start unless the pairing code is at least 24 characters with real character variety.
+Failed approvals back off exponentially, keyed on the source address rather than `client_id` —
+registration is open, so an attacker can mint a fresh client id per guess and a client-keyed limiter
+would never fire. A looser global counter sits behind the per-address one so a distributed attack is
+slowed without letting a single attacker lock the owner out.
+
 The connector adds no sandbox of its own. An agent it starts has exactly the authority that daemon's
 local clients already have. Run the connector behind TLS you control, and do not expose it if you
 would not also expose the daemons behind it.

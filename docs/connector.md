@@ -37,7 +37,9 @@ The escape hatch is `list_paseo_tools` plus `run_paseo_tool`, which reach the ho
 
 Speech does not produce identifiers. Every reference is matched against what exists, in tiers: exact id, exact alias, id prefix, alias prefix, substring, then all-words-present. The first tier with a hit wins, so an exact name never loses to something that merely contains it.
 
-A query that matches two things is an error naming both, not a guess. These tools start agents; asking is cheaper than being wrong.
+A query that matches two things is an error naming both, not a guess. These tools start agents; asking is cheaper than being wrong. The same rule covers what was never said: `start_work` resolves a workspace explicitly every time, using the sole workspace when a host has exactly one and asking otherwise. Leaving `workspaceId` off a top-level `create_agent` makes the daemon open a workspace at its own process directory, which is almost never where the user meant.
+
+Two daemon shapes are easy to get wrong from the outside, and both fail quietly rather than loudly. Agent lifecycle is `initializing | idle | running | error | closed` — there is no "finished"; a completed agent returns to `idle` and raises `requiresAttention` with `attentionReason`. And `list_providers` reports `enabled` plus a `status` of `available`, never an availability boolean or a default model: the model list, including which is default, only comes from `list_models`, and `create_agent` rejects a bare provider id.
 
 ## Authorization
 
@@ -51,7 +53,9 @@ The connector is its own OAuth 2.1 authorization server, because Claude requires
 | `/oauth/authorize` → `/oauth/approve`         | Approval page gated on the pairing code              |
 | `/oauth/token`                                | PKCE code exchange and refresh                       |
 
-Registration is open. That is safe only because a registered client still cannot get a token without the pairing code, which is the single secret standing between the public internet and your agents. Set a real one.
+Registration is open. That is safe only because a registered client still cannot get a token without the pairing code, which is the single secret standing between the public internet and your agents.
+
+Two things follow from that, and both are enforced rather than advised. The code must be at least 24 characters with real variety, checked at startup, because a code someone invented is the weakest part of this design. And failed approvals are rate limited with exponential backoff, keyed on the source address rather than `client_id` — registration is open, so an attacker can mint a fresh client id per guess and a client-keyed limiter would never fire. A looser global counter sits behind it so a distributed attack still slows to a crawl without letting one attacker lock you out of your own connector.
 
 Access tokens live an hour, refresh tokens rotate on use, and both are stored as SHA-256 hashes next to your config at `connector-oauth.json` — a leaked state file yields no live tokens. Tokens are bound to the resource identifier (`publicUrl` + `/mcp`), so `publicUrl` must be exactly the origin Claude calls. A mismatch fails audience validation rather than degrading.
 
@@ -80,6 +84,8 @@ Anyone holding the pairing code can start agents on every configured host, with 
 Each host takes exactly one of `endpoint` or `offer`. Endpoints are the strings `paseo --host` already accepts. An offer is the pairing URL Paseo renders as a QR code; use it for anything you cannot reach directly, since it carries the daemon's public key and gets you the encrypted relay path.
 
 Host names are what you will say out loud, so pick names you would actually use. Duplicates are rejected — an ambiguous host name is an ambiguous voice command.
+
+`GET /health` answers liveness and nothing else. It is unauthenticated and public, so it must never describe the hosts behind it; use `list_hosts` through an authenticated session for that.
 
 `PASEO_CONNECTOR_LISTEN`, `PASEO_CONNECTOR_PUBLIC_URL`, and `PASEO_CONNECTOR_PAIRING_CODE` override the file.
 

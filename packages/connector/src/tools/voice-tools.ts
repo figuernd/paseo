@@ -38,6 +38,19 @@ interface WorkspaceRow {
   kind: string;
 }
 
+interface ProviderRow {
+  id?: string;
+  label?: string | null;
+  enabled?: boolean;
+  status?: string;
+}
+
+interface ModelRow {
+  id?: string;
+  label?: string | null;
+  isDefault?: boolean | null;
+}
+
 const HOST_ARG = z
   .string()
   .optional()
@@ -70,6 +83,52 @@ function sentence(parts: string[]): string {
 
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * Agent lifecycle is `initializing | idle | running | error | closed` — there is no "finished"
+ * status. A completed agent goes back to `idle` and raises `requiresAttention` with
+ * `attentionReason: "finished"`, so filtering on a status named "finished" would silently keep
+ * every agent from the whole lookback window and describe them as if they were still working.
+ */
+const RUNNING_STATUSES = new Set(["initializing", "running"]);
+
+function needsAttention(agent: AgentRow): boolean {
+  return agent.requiresAttention === true || agent.status === "error";
+}
+
+function isActive(agent: AgentRow): boolean {
+  if (agent.archivedAt) {
+    return false;
+  }
+  return RUNNING_STATUSES.has(agent.status) || needsAttention(agent);
+}
+
+/**
+ * Lifecycle statuses are for the UI, not for the ear: "idle" spoken about an agent that is
+ * blocked on an approval tells the user the opposite of what is happening. Say what the state
+ * means instead.
+ */
+function describeState(agent: AgentRow): string {
+  if (RUNNING_STATUSES.has(agent.status)) {
+    return "still working";
+  }
+  if (agent.status === "error") {
+    return "stopped with an error";
+  }
+  if (agent.requiresAttention) {
+    switch (agent.attentionReason) {
+      case "permission":
+        return "waiting on your approval";
+      case "finished":
+        return "finished";
+      case "error":
+        return "stopped with an error";
+      default:
+        return "waiting on you";
+    }
+  }
+  return agent.status === "closed" ? "closed" : "idle";
 }
 
 export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
@@ -219,10 +278,8 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
           }
         }
 
-        const active = rows.filter(
-          (row) => includeFinished || (row.status !== "finished" && row.status !== "closed"),
-        );
-        const attention = active.filter((row) => row.requiresAttention);
+        const active = rows.filter((row) => includeFinished || isActive(row));
+        const attention = active.filter(needsAttention);
 
         if (active.length === 0) {
           return {
@@ -235,7 +292,7 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
         }
 
         const summary = active
-          .map((row) => `${describeAgent(row)} on ${row.host} is ${row.status}`)
+          .map((row) => `${describeAgent(row)} on ${row.host} is ${describeState(row)}`)
           .join("; ");
         const attentionLine =
           attention.length > 0
@@ -272,7 +329,7 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
           .string()
           .optional()
           .describe(
-            "Which workspace to work in, by project or directory name. Omit only if the user did not indicate one and the host has a single obvious workspace.",
+            "Which workspace to work in, by project or directory name. Omit only when the user did not indicate one; the host must then have exactly one workspace, or you will be asked to choose.",
           ),
         title: z
           .string()
@@ -293,10 +350,16 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
           throw new ResolutionError("start_work needs a task to hand to the agent.");
         }
 
-        let workspaceId: string | undefined;
+        // The workspace is always resolved explicitly. A top-level create_agent without a
+        // workspaceId makes the daemon open a fresh workspace at its own process directory, so
+        // omitting it would quietly start the work in the wrong place.
+        const listed = await host.callTool("list_workspaces", {});
+        const workspaces = structured<WorkspaceRow>(listed, "workspaces");
+        const describeWorkspace = (workspace: WorkspaceRow) =>
+          workspace.title?.trim() || basename(workspace.cwd);
+
+        let workspaceId: string;
         if (args.workspace) {
-          const listed = await host.callTool("list_workspaces", {});
-          const workspaces = structured<WorkspaceRow>(listed, "workspaces");
           const match = requireCandidate(
             String(args.workspace),
             workspaces.map((workspace) => ({
@@ -304,12 +367,21 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
               aliases: [workspace.title, basename(workspace.cwd), workspace.cwd],
               workspace,
             })),
-            {
-              noun: "workspace",
-              describe: (row) => row.workspace.title || basename(row.workspace.cwd),
-            },
+            { noun: "workspace", describe: (row) => describeWorkspace(row.workspace) },
           );
           workspaceId = match.workspace.workspaceId;
+        } else if (workspaces.length === 1) {
+          workspaceId = (workspaces[0] as WorkspaceRow).workspaceId;
+        } else if (workspaces.length === 0) {
+          throw new ResolutionError(
+            `${host.name} has no workspaces to work in. Open one in Paseo first, or say which project to use.`,
+          );
+        } else {
+          throw new ResolutionError(
+            `${host.name} has ${plural(workspaces.length, "workspace")}: ${workspaces
+              .map(describeWorkspace)
+              .join(", ")}. Ask which one before starting work.`,
+          );
         }
 
         const provider = (args.provider as string | undefined) ?? (await defaultProvider(host));
@@ -319,7 +391,7 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
           title,
           provider,
           initialPrompt: task,
-          ...(workspaceId ? { workspaceId } : {}),
+          workspaceId,
           // A voice turn cannot block on an agent run, and the user is not watching a screen.
           background: true,
           notifyOnFinish: true,
@@ -359,9 +431,7 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
           limit: 20,
         });
         const content = String(activity.structuredContent?.content ?? "").trim();
-        const headline = `${describeAgent(agent)} on ${host.name} is ${agent.status}${
-          agent.requiresAttention ? ` and needs you (${agent.attentionReason ?? "waiting"})` : ""
-        }.`;
+        const headline = `${describeAgent(agent)} on ${host.name} is ${describeState(agent)}.`;
         return {
           text:
             args.detail === true && content
@@ -411,28 +481,49 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
         "List the permission requests agents are waiting on across hosts. Read these out so the user can approve or deny by voice.",
       inputSchema: { host: HOST_ARG },
       async handler(args) {
-        const hosts = args.host ? [requireHost(args.host as string)] : registry.list();
+        const explicitHost = args.host ? requireHost(args.host as string) : null;
+        const hosts = explicitHost ? [explicitHost] : registry.list();
         const pending: Array<Record<string, unknown>> = [];
+        const unreachable: string[] = [];
         for (const host of hosts) {
           try {
             const result = await host.callTool("list_pending_permissions", {});
             for (const entry of structured<Record<string, unknown>>(result, "permissions")) {
               pending.push({ ...entry, host: host.name });
             }
-          } catch {
-            continue;
+          } catch (error) {
+            // Never let an unreachable host read as "nothing is waiting" — an agent blocked on a
+            // host we could not ask stays blocked, and the user would have been told all is well.
+            if (explicitHost) {
+              throw error;
+            }
+            unreachable.push(
+              `${host.name} (${error instanceof Error ? error.message : String(error)})`,
+            );
           }
         }
+
+        const unreachableLine =
+          unreachable.length > 0
+            ? `Could not check ${unreachable.join(", ")}, so there may be more.`
+            : "";
+
         if (pending.length === 0) {
-          return { text: "Nothing is waiting on your approval.", structured: { permissions: [] } };
+          return {
+            text: sentence(["Nothing is waiting on your approval.", unreachableLine]),
+            structured: { permissions: [], unreachable },
+          };
         }
         const lines = pending.map((entry) => {
           const request = entry.request as { title?: string; toolName?: string } | undefined;
           return `${request?.title ?? request?.toolName ?? "a request"} on ${String(entry.host)}`;
         });
         return {
-          text: `${plural(pending.length, "approval")} waiting: ${lines.join(", ")}.`,
-          structured: { permissions: pending },
+          text: sentence([
+            `${plural(pending.length, "approval")} waiting: ${lines.join(", ")}.`,
+            unreachableLine,
+          ]),
+          structured: { permissions: pending, unreachable },
         };
       },
     },
@@ -607,22 +698,44 @@ export function createConnectorTools(registry: HostRegistry): ConnectorTool[] {
 }
 
 /**
- * The catalog requires an explicit provider/model. Asking the user to say "claude slash opus" out
- * loud is not acceptable, so fall back to whatever the host reports as available.
+ * create_agent requires a `provider/model` pair and rejects a bare provider id. Nobody is going to
+ * say "claude slash opus" out loud, so pick one from what the host actually reports.
+ *
+ * `list_providers` answers with `{ id, label, description, enabled, status, modes }` — there is no
+ * availability boolean and no default model on that record. `status` is "available" once the
+ * provider is ready (the daemon rewrites its internal "ready"), and the model list, including
+ * which one is default, only comes from `list_models`.
  */
 async function defaultProvider(host: HostHandle): Promise<string> {
-  const result = await host.callTool("list_providers", {});
-  const providers = structured<{ id?: string; available?: boolean; defaultModel?: string | null }>(
-    result,
-    "providers",
+  const listed = await host.callTool("list_providers", {});
+  const providers = structured<ProviderRow>(listed, "providers");
+  const usable = providers.find(
+    (provider) =>
+      Boolean(provider.id) && provider.enabled !== false && provider.status === "available",
   );
-  const usable = providers.find((provider) => provider.available !== false && provider.id);
   if (!usable?.id) {
+    const known = providers
+      .map(
+        (provider) =>
+          `${provider.id} (${provider.enabled === false ? "disabled" : provider.status})`,
+      )
+      .join(", ");
     throw new ResolutionError(
-      `${host.name} has no available agent provider configured. Set one up in Paseo before starting work.`,
+      `${host.name} has no ready agent provider${known ? `: ${known}` : ""}. Sign one in on that host before starting work.`,
     );
   }
-  return usable.defaultModel ? `${usable.id}/${usable.defaultModel}` : usable.id;
+
+  const models = structured<ModelRow>(
+    await host.callTool("list_models", { provider: usable.id }),
+    "models",
+  );
+  const model = models.find((candidate) => candidate.isDefault === true) ?? models[0];
+  if (!model?.id) {
+    throw new ResolutionError(
+      `${host.name} reports no models for ${usable.id}, so there is nothing to start work with.`,
+    );
+  }
+  return `${usable.id}/${model.id}`;
 }
 
 /**
