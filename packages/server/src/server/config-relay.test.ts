@@ -89,6 +89,41 @@ describe("daemon relay config", () => {
     expect(loadConfig(hostedHome, { env: {} }).relayUseTls).toBe(true);
   });
 
+  test("defaults a self-hosted relay endpoint to TLS", async () => {
+    // The old rule compared the endpoint against the hosted default by string
+    // identity, so any other host silently fell back to plaintext ws://.
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: { relay: { endpoint: "relay.example.com:443" } },
+    });
+    expect(loadConfig(home, { env: {} }).relayUseTls).toBe(true);
+
+    const oddPort = await createPaseoHome({
+      version: 1,
+      daemon: { relay: { endpoint: "relay.example.com:8443" } },
+    });
+    expect(loadConfig(oddPort, { env: {} }).relayUseTls).toBe(true);
+  });
+
+  test("defaults a loopback relay endpoint to plaintext", async () => {
+    for (const endpoint of ["localhost:8787", "127.0.0.1:8787", "[::1]:8787"]) {
+      const home = await createPaseoHome({
+        version: 1,
+        daemon: { relay: { endpoint } },
+      });
+      expect(loadConfig(home, { env: {} }).relayUseTls, endpoint).toBe(false);
+    }
+  });
+
+  test("explicit configuration still wins over the endpoint default", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      daemon: { relay: { endpoint: "relay.example.com:443", useTls: false } },
+    });
+    expect(loadConfig(home, { env: {} }).relayUseTls).toBe(false);
+    expect(loadConfig(home, { env: { PASEO_RELAY_USE_TLS: "true" } }).relayUseTls).toBe(true);
+  });
+
   test("relayPublicUseTls falls back to relayUseTls when unset", async () => {
     const home = await createPaseoHome({ version: 1, daemon: { relay: {} } });
     // Default: both true (hosted relay)

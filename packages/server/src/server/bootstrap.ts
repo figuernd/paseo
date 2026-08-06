@@ -189,6 +189,7 @@ import {
 } from "./managed-processes/managed-processes.js";
 import { terminateWithTreeKill } from "../utils/tree-kill.js";
 import { isHostnameAllowed, type HostnamesConfig } from "./hostnames.js";
+import { relayEndpointDefaultsToTls } from "./relay-tls.js";
 import {
   createRequireBearerMiddleware,
   isAgentMcpRequestAuthorized,
@@ -1485,8 +1486,14 @@ export async function createPaseoDaemon(
             const relayEnabled = config.relayEnabled ?? true;
             const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.paseo.sh:443";
+            const relayUseTls = config.relayUseTls ?? relayEndpointDefaultsToTls(relayEndpoint);
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
+            if (relayEnabled && !relayUseTls && relayEndpointDefaultsToTls(relayEndpoint)) {
+              logger.warn(
+                { relayEndpoint },
+                "Relay connection is not using TLS. The E2EE handshake and all connection metadata will cross the network in the clear. Set daemon.relay.useTls unless this is intentional.",
+              );
+            }
             if (boundListenTarget.type === "tcp") {
               logger.info(
                 {

@@ -23,6 +23,7 @@ import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
+import { relayEndpointDefaultsToTls } from "./relay-tls.js";
 
 const DEFAULT_PORT = 6767;
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
@@ -240,7 +241,7 @@ function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
     resolveTlsFromEnv(
       input.env.PASEO_RELAY_USE_TLS,
       input.persisted.daemon?.relay?.useTls,
-      endpoint === DEFAULT_RELAY_ENDPOINT,
+      relayEndpointDefaultsToTls(endpoint),
     );
   const publicUseTls = resolveTlsFromEnv(
     input.env.PASEO_RELAY_PUBLIC_USE_TLS,
