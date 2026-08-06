@@ -1,5 +1,16 @@
-export { createClientChannel, createDaemonChannel, EncryptedChannel } from "./encrypted-channel.js";
-export type { Transport, TransportMessage, EncryptedChannelEvents } from "./encrypted-channel.js";
+export {
+  ALLOW_ANY_CLIENT,
+  ClientNotPairedError,
+  createClientChannel,
+  createDaemonChannel,
+  EncryptedChannel,
+} from "./encrypted-channel.js";
+export type {
+  ClientAuthorizer,
+  Transport,
+  TransportMessage,
+  EncryptedChannelEvents,
+} from "./encrypted-channel.js";
 
 export {
   generateKeyPair,

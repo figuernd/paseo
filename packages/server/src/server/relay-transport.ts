@@ -4,6 +4,7 @@ import { WebSocket } from "ws";
 import type pino from "pino";
 import {
   createDaemonChannel,
+  type ClientAuthorizer,
   type Transport as RelayTransport,
   type KeyPair,
 } from "@getpaseo/relay/e2ee";
@@ -18,6 +19,11 @@ export interface RelayTransportOptions {
   relayUseTls: boolean;
   serverId: string;
   daemonKeyPair?: KeyPair;
+  /**
+   * Decides which clients may open a session. Without it the daemon's public
+   * key — which ships in every pairing link — would be the only credential.
+   */
+  authorizeClient: ClientAuthorizer;
   createWebSocket?: RelayWebSocketFactory;
 }
 
@@ -113,6 +119,7 @@ export function startRelayTransport({
   relayUseTls,
   serverId,
   daemonKeyPair,
+  authorizeClient,
   createWebSocket = createDefaultRelayWebSocket,
 }: RelayTransportOptions): RelayTransportController {
   const relayLogger = logger.child({ module: "relay-transport" });
@@ -383,6 +390,7 @@ export function startRelayTransport({
         void attachEncryptedSocket(
           socket,
           daemonKeyPair,
+          authorizeClient,
           relayLogger.child({ connectionId }),
           attachSocket,
           externalMetadata,
@@ -416,6 +424,7 @@ export function startRelayTransport({
 async function attachEncryptedSocket(
   socket: RelayWebSocketLike,
   daemonKeyPair: KeyPair,
+  authorizeClient: ClientAuthorizer,
   logger: pino.Logger,
   attachSocket: (ws: RelaySocketLike, metadata?: ExternalSocketMetadata) => Promise<void>,
   metadata?: ExternalSocketMetadata,
@@ -432,7 +441,7 @@ async function attachEncryptedSocket(
       }
       pendingMessages.push(data);
     };
-    const channel = await createDaemonChannel(relayTransport, daemonKeyPair, {
+    const channel = await createDaemonChannel(relayTransport, daemonKeyPair, authorizeClient, {
       onmessage: emitMessage,
       onclose: (code, reason) => emitter.emit("close", code, reason),
       onerror: (error) => {

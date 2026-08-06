@@ -515,6 +515,7 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         e2ee: {
           enabled: true,
           daemonPublicKeyB64: connection.daemonPublicKeyB64,
+          ...(connection.enrollToken ? { enrollToken: connection.enrollToken } : {}),
         },
       });
     },
@@ -1717,6 +1718,7 @@ export class HostRuntimeStore {
     relayEndpoint: string;
     useTls?: boolean;
     daemonPublicKeyB64: string;
+    enrollToken?: string;
     label?: string;
   }): Promise<HostProfile> {
     const relayEndpoint = normalizeHostPort(input.relayEndpoint);
@@ -1735,6 +1737,7 @@ export class HostRuntimeStore {
         relayEndpoint,
         ...(explicitUseTls ? { useTls } : {}),
         daemonPublicKeyB64,
+        ...(input.enrollToken ? { enrollToken: input.enrollToken } : {}),
       },
     });
   }
@@ -1747,6 +1750,7 @@ export class HostRuntimeStore {
       relayEndpoint: offer.relay.endpoint,
       useTls,
       daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      enrollToken: offer.enroll,
       label,
     });
   }

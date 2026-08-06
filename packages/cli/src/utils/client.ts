@@ -326,7 +326,11 @@ async function connectViaRelayOffer(
       target: string,
       config?: { headers?: Record<string, string>; protocols?: string[] },
     ) => nodeWebSocketFactory(target, { headers: config?.headers, protocols: config?.protocols }),
-    e2ee: { enabled: true, daemonPublicKeyB64: offer.daemonPublicKeyB64 },
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      enrollToken: offer.enroll,
+    },
     reconnect: { enabled: false },
   });
 

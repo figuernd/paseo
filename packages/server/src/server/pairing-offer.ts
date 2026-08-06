@@ -3,6 +3,7 @@ import type { Logger } from "pino";
 import { createConnectionOfferV2, encodeOfferToFragmentUrl } from "./connection-offer.js";
 import { relayEndpointDefaultsToTls } from "./relay-tls.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
+import { PairedClientStore } from "./paired-clients.js";
 import { renderPairingQr } from "./pairing-qr.js";
 import { getOrCreateServerId } from "./server-id.js";
 
@@ -22,6 +23,8 @@ export async function generateLocalPairingOffer(args: {
   appBaseUrl?: string;
   includeQr?: boolean;
   logger?: Logger;
+  /** Injected by tests; defaults to the store in paseoHome. */
+  pairedClients?: PairedClientStore;
 }): Promise<LocalPairingOffer> {
   const relayEnabled = args.relayEnabled ?? true;
   if (!relayEnabled) {
@@ -39,9 +42,14 @@ export async function generateLocalPairingOffer(args: {
   const appBaseUrl = args.appBaseUrl ?? "https://app.paseo.sh";
   const serverId = getOrCreateServerId(args.paseoHome, { logger: args.logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(args.paseoHome, args.logger);
+  // Each rendered offer mints its own token, so generating a fresh QR does not
+  // extend the life of an older one that is still outstanding.
+  const pairedClients =
+    args.pairedClients ?? new PairedClientStore(args.paseoHome, args.logger ?? undefined);
   const offer = await createConnectionOfferV2({
     serverId,
     daemonPublicKeyB64: daemonKeyPair.publicKeyB64,
+    enroll: pairedClients.createEnrollment(),
     relay: { endpoint: relayPublicEndpoint, useTls: relayPublicUseTls },
   });
   const url = encodeOfferToFragmentUrl({ offer, appBaseUrl });

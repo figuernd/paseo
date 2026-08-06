@@ -363,6 +363,7 @@ function makeOffer(input?: Partial<ConnectionOffer>): ConnectionOffer {
     v: 2,
     serverId: input?.serverId ?? "srv_offer",
     daemonPublicKeyB64: input?.daemonPublicKeyB64 ?? "pk_test_offer",
+    enroll: input?.enroll ?? "enroll_test_offer",
     relay: {
       endpoint: input?.relay?.endpoint ?? "relay.paseo.sh:443",
       useTls: input?.relay?.useTls ?? false,
@@ -3164,6 +3165,7 @@ describe("HostRuntimeStore", () => {
         relayEndpoint: "relay.example.com:443",
         useTls: true,
         daemonPublicKeyB64: "pk_test_offer",
+        enrollToken: "enroll_test_offer",
       },
     ]);
 
@@ -3186,6 +3188,7 @@ describe("HostRuntimeStore", () => {
       v: 2,
       serverId: "srv_offer",
       daemonPublicKeyB64: "pk_test_offer",
+      enroll: "enroll_test_offer",
       relay: { endpoint: "relay.paseo.sh:443" },
     });
 
@@ -3199,6 +3202,7 @@ describe("HostRuntimeStore", () => {
         relayEndpoint: "relay.paseo.sh:443",
         useTls: true,
         daemonPublicKeyB64: "pk_test_offer",
+        enrollToken: "enroll_test_offer",
       },
     ]);
 

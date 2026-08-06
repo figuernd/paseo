@@ -151,7 +151,11 @@ export async function buildClientConfig(
       useTls: connection.useTls ?? shouldUseTlsForDefaultHostedRelay(connection.relayEndpoint),
       serverId,
     }),
-    e2ee: { enabled: true, daemonPublicKeyB64: connection.daemonPublicKeyB64 },
+    e2ee: {
+      enabled: true,
+      daemonPublicKeyB64: connection.daemonPublicKeyB64,
+      ...(connection.enrollToken ? { enrollToken: connection.enrollToken } : {}),
+    },
   };
 }
 

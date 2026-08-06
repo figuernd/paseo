@@ -309,6 +309,8 @@ export interface DaemonClientConfig {
   e2ee?: {
     enabled?: boolean;
     daemonPublicKeyB64?: string;
+    /** Single-use token from the pairing offer. Required until this client is enrolled. */
+    enrollToken?: string;
   };
   reconnect?: {
     enabled?: boolean;
@@ -1235,6 +1237,20 @@ export class DaemonClient {
     return this.connectPromise;
   }
 
+  private createRelayE2eeFactory(baseFactory: DaemonTransportFactory): DaemonTransportFactory {
+    const daemonPublicKeyB64 = this.config.e2ee?.daemonPublicKeyB64;
+    if (!daemonPublicKeyB64) {
+      throw new Error("daemonPublicKeyB64 is required for relay E2EE");
+    }
+    const enrollToken = this.config.e2ee?.enrollToken;
+    return createRelayE2eeTransportFactory({
+      baseFactory,
+      daemonPublicKeyB64,
+      ...(enrollToken ? { enrollToken } : {}),
+      logger: this.logger,
+    });
+  }
+
   private attemptConnect(): void {
     if (this.connectionState.status === "disposed") {
       this.rejectConnect(new Error("Daemon client is disposed"));
@@ -1268,18 +1284,9 @@ export class DaemonClient {
       const shouldUseRelayE2ee =
         this.config.e2ee?.enabled === true && isRelayClientWebSocketUrl(this.config.url);
 
-      let transportFactory = baseTransportFactory;
-      if (shouldUseRelayE2ee) {
-        const daemonPublicKeyB64 = this.config.e2ee?.daemonPublicKeyB64;
-        if (!daemonPublicKeyB64) {
-          throw new Error("daemonPublicKeyB64 is required for relay E2EE");
-        }
-        transportFactory = createRelayE2eeTransportFactory({
-          baseFactory: baseTransportFactory,
-          daemonPublicKeyB64,
-          logger: this.logger,
-        });
-      }
+      const transportFactory = shouldUseRelayE2ee
+        ? this.createRelayE2eeFactory(baseTransportFactory)
+        : baseTransportFactory;
       const transportUrl = this.resolveTransportUrlForAttempt();
       const transport = transportFactory({
         url: transportUrl,

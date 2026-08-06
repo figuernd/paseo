@@ -32,6 +32,14 @@ export interface RelayHostConnection {
   relayEndpoint: string;
   useTls?: boolean;
   daemonPublicKeyB64: string;
+  /**
+   * Single-use token from the pairing offer this connection came from.
+   *
+   * Kept after enrollment because a first connection can fail after the token
+   * is spent or before it is; the daemon ignores it once this device's key is
+   * enrolled, so re-sending it is harmless and re-trying a failed pairing works.
+   */
+  enrollToken?: string;
 }
 
 export type HostConnection =
@@ -323,28 +331,34 @@ function normalizeStoredConnection(connection: unknown): HostConnection | null {
     return path ? { id: `pipe:${path}`, type: "directPipe", path } : null;
   }
   if (type === "relay") {
-    try {
-      const relayEndpoint = normalizeHostPort(
-        typeof record.relayEndpoint === "string" ? record.relayEndpoint : "",
-      );
-      const daemonPublicKeyB64 = (
-        typeof record.daemonPublicKeyB64 === "string" ? record.daemonPublicKeyB64 : ""
-      ).trim();
-      if (!daemonPublicKeyB64) return null;
-      const useTls = typeof record.useTls === "boolean" ? record.useTls : undefined;
-      return {
-        id: useTls === true ? `relay:wss:${relayEndpoint}` : `relay:${relayEndpoint}`,
-        type: "relay",
-        relayEndpoint,
-        ...(useTls !== undefined ? { useTls } : {}),
-        daemonPublicKeyB64,
-      };
-    } catch {
-      return null;
-    }
+    return normalizeStoredRelayConnection(record);
   }
 
   return null;
+}
+
+function normalizeStoredRelayConnection(record: Record<string, unknown>): HostConnection | null {
+  try {
+    const relayEndpoint = normalizeHostPort(
+      typeof record.relayEndpoint === "string" ? record.relayEndpoint : "",
+    );
+    const daemonPublicKeyB64 = (
+      typeof record.daemonPublicKeyB64 === "string" ? record.daemonPublicKeyB64 : ""
+    ).trim();
+    if (!daemonPublicKeyB64) return null;
+    const useTls = typeof record.useTls === "boolean" ? record.useTls : undefined;
+    const enrollToken = (typeof record.enrollToken === "string" ? record.enrollToken : "").trim();
+    return {
+      id: useTls === true ? `relay:wss:${relayEndpoint}` : `relay:${relayEndpoint}`,
+      type: "relay",
+      relayEndpoint,
+      ...(useTls !== undefined ? { useTls } : {}),
+      daemonPublicKeyB64,
+      ...(enrollToken ? { enrollToken } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeStoredHostProfile(entry: unknown): HostProfile | null {

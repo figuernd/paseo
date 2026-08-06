@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import pino from "pino";
-import { generateKeyPair } from "@getpaseo/relay";
+import { ALLOW_ANY_CLIENT, generateKeyPair } from "@getpaseo/relay";
 import { createRelayRuntime } from "./relay-runtime.js";
 import { startRelayTransport, type RelayTransportController } from "./relay-transport.js";
 
@@ -26,6 +26,8 @@ describe("RelayRuntime", () => {
       attachSocket: async () => undefined,
       serverId: "relay-runtime-test",
       daemonKeyPair: generateKeyPair(),
+      // Start/stop lifecycle, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       startTransport,
     });
 

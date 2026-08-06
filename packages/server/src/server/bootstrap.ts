@@ -164,6 +164,7 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
+import { PairedClientStore } from "./paired-clients.js";
 import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
 import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
@@ -583,6 +584,7 @@ export async function createPaseoDaemon(
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
+  const pairedClients = new PairedClientStore(config.paseoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.
@@ -1611,6 +1613,20 @@ export async function createPaseoDaemon(
               },
               serverId,
               daemonKeyPair: daemonKeyPair.keyPair,
+              authorizeClient: ({ clientPublicKeyB64, enrollToken }) => {
+                const result = pairedClients.authorize({
+                  publicKeyB64: clientPublicKeyB64,
+                  enrollToken,
+                });
+                if (result.outcome === "rejected") {
+                  logger.warn(
+                    { reason: result.reason },
+                    "Refused a relay client that is not paired with this daemon",
+                  );
+                  return false;
+                }
+                return true;
+              },
             });
             daemonConfigStore.onFieldChange("relay.enabled", (value) => {
               relayRuntime?.setEnabled(value === true);

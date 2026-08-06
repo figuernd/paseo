@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  ALLOW_ANY_CLIENT,
+  ClientNotPairedError,
   createClientChannel,
   createDaemonChannel,
   EncryptedChannel,
@@ -62,7 +64,7 @@ describe("EncryptedChannel", () => {
       onclose: null,
       onerror: null,
     };
-    const channel = createDaemonChannel(transport, daemonKeyPair);
+    const channel = createDaemonChannel(transport, daemonKeyPair, ALLOW_ANY_CLIENT);
 
     transport.onmessage?.({
       data: JSON.stringify({
@@ -123,7 +125,11 @@ describe("EncryptedChannel", () => {
     });
 
     // Start daemon waiting for client
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair);
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+    );
 
     // Client connects (scanned QR, got daemon's public key)
     const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
@@ -136,6 +142,53 @@ describe("EncryptedChannel", () => {
 
     expect(clientChannel.isOpen()).toBe(true);
     expect(daemonChannel.isOpen()).toBe(true);
+  });
+
+  it("refuses a client the authorizer rejects", async () => {
+    const [daemonTransport, clientTransport] = createMockTransportPair();
+    const daemonKeyPair = generateKeyPair();
+    const daemonPubKeyB64 = exportPublicKey(daemonKeyPair.publicKey);
+
+    // Holding the daemon's public key is not enough: it ships in every pairing
+    // link, so it cannot be the credential.
+    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, () => false);
+    await createClientChannel(clientTransport, daemonPubKeyB64);
+
+    await expect(daemonChannelPromise).rejects.toThrow(ClientNotPairedError);
+  });
+
+  it("passes the client key and enrollment token to the authorizer", async () => {
+    const [daemonTransport, clientTransport] = createMockTransportPair();
+    const daemonKeyPair = generateKeyPair();
+    const daemonPubKeyB64 = exportPublicKey(daemonKeyPair.publicKey);
+
+    const seen: Array<{ clientPublicKeyB64: string; enrollToken: string | undefined }> = [];
+    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, (input) => {
+      seen.push(input);
+      return true;
+    });
+    await createClientChannel(clientTransport, daemonPubKeyB64, {}, "enroll-token-abc");
+    await daemonChannelPromise;
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.enrollToken).toBe("enroll-token-abc");
+    expect(seen[0]?.clientPublicKeyB64).toMatch(/.+/);
+  });
+
+  it("omits the enrollment token when the client has none", async () => {
+    const [daemonTransport, clientTransport] = createMockTransportPair();
+    const daemonKeyPair = generateKeyPair();
+    const daemonPubKeyB64 = exportPublicKey(daemonKeyPair.publicKey);
+
+    const seen: Array<string | undefined> = [];
+    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, (input) => {
+      seen.push(input.enrollToken);
+      return true;
+    });
+    await createClientChannel(clientTransport, daemonPubKeyB64);
+    await daemonChannelPromise;
+
+    expect(seen).toEqual([undefined]);
   });
 
   it("exchanges encrypted messages bidirectionally", async () => {
@@ -152,9 +205,14 @@ describe("EncryptedChannel", () => {
       clientOpenedResolve = resolve;
     });
 
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, {
-      onmessage: (data) => daemonMessages.push(data),
-    });
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+      {
+        onmessage: (data) => daemonMessages.push(data),
+      },
+    );
 
     const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
       onmessage: (data) => clientMessages.push(data),
@@ -187,7 +245,11 @@ describe("EncryptedChannel", () => {
       clientOpenedResolve = resolve;
     });
 
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair);
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+    );
     const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
       onopen: () => clientOpenedResolve?.(),
     });
@@ -311,7 +373,11 @@ describe("EncryptedChannel", () => {
 
     const daemonKeyPair = generateKeyPair();
 
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair);
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+    );
 
     // Send invalid hello
     setTimeout(() => {
@@ -333,9 +399,14 @@ describe("EncryptedChannel", () => {
       clientOpenedResolve = resolve;
     });
 
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, {
-      onmessage: (data) => daemonMessages.push(data),
-    });
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+      {
+        onmessage: (data) => daemonMessages.push(data),
+      },
+    );
 
     const clientChannel = await createClientChannel(clientTransport, daemonPubKeyB64, {
       onopen: () => clientOpenedResolve?.(),
@@ -371,7 +442,11 @@ describe("EncryptedChannel", () => {
       clientOpenedResolve = resolve;
     });
 
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair);
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+    );
 
     await createClientChannel(clientTransport, daemonPubKeyB64, {
       onopen: () => clientOpenedResolve?.(),
@@ -401,9 +476,14 @@ describe("EncryptedChannel", () => {
       resolveOpen = resolve;
     });
 
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, {
-      onmessage: (data) => daemonMessages.push(data),
-    });
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+      {
+        onmessage: (data) => daemonMessages.push(data),
+      },
+    );
     const clientChannel = await createClientChannel(
       clientTransport,
       exportPublicKey(daemonKeyPair.publicKey),
@@ -432,9 +512,14 @@ describe("EncryptedChannel", () => {
     const opened = new Promise<void>((resolve) => {
       resolveOpen = resolve;
     });
-    const daemonChannelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, {
-      onmessage: (data) => daemonMessages.push(data),
-    });
+    const daemonChannelPromise = createDaemonChannel(
+      daemonTransport,
+      daemonKeyPair,
+      ALLOW_ANY_CLIENT,
+      {
+        onmessage: (data) => daemonMessages.push(data),
+      },
+    );
     const clientChannel = await createClientChannel(
       clientTransport,
       exportPublicKey(daemonKeyPair.publicKey),
@@ -497,7 +582,7 @@ describe("EncryptedChannel", () => {
       onclose: null,
       onerror: null,
     };
-    const channelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, {
+    const channelPromise = createDaemonChannel(daemonTransport, daemonKeyPair, ALLOW_ANY_CLIENT, {
       onmessage: (data) => daemonMessages.push(data),
     });
     const sharedKey = deriveSharedKey(

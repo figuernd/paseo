@@ -182,6 +182,7 @@ export default function PairScanScreen() {
             relayEndpoint: normalizeHostPort(offer.relay.endpoint),
             useTls: offer.relay.useTls,
             daemonPublicKeyB64: offer.daemonPublicKeyB64,
+            enrollToken: offer.enroll,
           },
           { serverId: offer.serverId },
         );

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type pino from "pino";
 import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
 import { exportPublicKey, generateKeyPair } from "@getpaseo/relay";
+import { ALLOW_ANY_CLIENT } from "@getpaseo/relay/e2ee";
 import { startRelayTransport } from "./relay-transport";
 
 function createMockLogger() {
@@ -154,6 +155,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
+      // These exercise socket plumbing, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -178,6 +181,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
+      // These exercise socket plumbing, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -202,6 +207,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
+      // These exercise socket plumbing, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -230,6 +237,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
+      // These exercise socket plumbing, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -269,6 +278,8 @@ describe("relay-transport control lifecycle", () => {
       relayUseTls: true,
       serverId: "srv_test",
       daemonKeyPair,
+      // Exercises socket plumbing, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);
@@ -337,6 +348,8 @@ describe("relay-transport control lifecycle", () => {
       relayEndpoint: "[::1]:443",
       relayUseTls: true,
       serverId: "srv_test",
+      // These exercise socket plumbing, not the pairing policy.
+      authorizeClient: ALLOW_ANY_CLIENT,
       createWebSocket: relay.createWebSocket,
     });
     controllers.push(controller);

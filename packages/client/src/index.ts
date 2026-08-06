@@ -63,6 +63,8 @@ export interface PaseoClientConfig {
   e2ee?: {
     enabled?: boolean;
     daemonPublicKeyB64?: string;
+    /** Single-use token from the pairing offer. Required until this client is enrolled. */
+    enrollToken?: string;
   };
   reconnect?: {
     enabled?: boolean;
