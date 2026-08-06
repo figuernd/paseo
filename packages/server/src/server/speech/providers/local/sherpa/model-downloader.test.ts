@@ -1,10 +1,15 @@
 import { describe, expect, test } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { ensureSherpaOnnxModel, getSherpaOnnxModelDir } from "./model-downloader.js";
+import {
+  ensureSherpaOnnxModel,
+  getSherpaOnnxModelDir,
+  ModelArchiveIntegrityError,
+} from "./model-downloader.js";
+import { getSherpaOnnxModelSpec, SHERPA_ONNX_MODEL_CATALOG } from "./model-catalog.js";
 
 function makeTmpDir(): string {
   return mkdtempSync(path.join(tmpdir(), "paseo-speech-models-"));
@@ -37,5 +42,36 @@ describe("sherpa model downloader", () => {
     });
 
     expect(out).toBe(modelDir);
+  });
+
+  test("rejects a tampered archive before extracting it and discards the file", async () => {
+    const modelsDir = makeTmpDir();
+    const spec = getSherpaOnnxModelSpec("kokoro-en-v0_19");
+    const archivePath = path.join(
+      modelsDir,
+      ".downloads",
+      path.basename(new URL(spec.archiveUrl).pathname),
+    );
+
+    // Stand in for a substituted or corrupted download: a pre-existing archive
+    // short-circuits the fetch, so this reaches the digest check without any
+    // network access.
+    mkdirSync(path.dirname(archivePath), { recursive: true });
+    writeFileSync(archivePath, "not the model you pinned");
+
+    await expect(
+      ensureSherpaOnnxModel({ modelsDir, modelId: "kokoro-en-v0_19", logger }),
+    ).rejects.toThrow(ModelArchiveIntegrityError);
+
+    // Left on disk it would short-circuit the fetch again and never be re-downloaded.
+    expect(existsSync(archivePath)).toBe(false);
+    // Nothing was unpacked.
+    expect(existsSync(getSherpaOnnxModelDir(modelsDir, "kokoro-en-v0_19"))).toBe(false);
+  });
+
+  test("every catalog entry pins a sha256", () => {
+    for (const [modelId, spec] of Object.entries(SHERPA_ONNX_MODEL_CATALOG)) {
+      expect(spec.archiveSha256, modelId).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });

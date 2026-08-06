@@ -1,4 +1,5 @@
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -68,13 +69,57 @@ async function downloadToFile(options: DownloadToFileOptions): Promise<void> {
   }
 }
 
+export class ModelArchiveIntegrityError extends Error {
+  constructor(
+    readonly archivePath: string,
+    readonly expectedSha256: string,
+    readonly actualSha256: string,
+  ) {
+    super(
+      `Model archive ${path.basename(archivePath)} failed integrity check. ` +
+        `Expected sha256 ${expectedSha256}, got ${actualSha256}. ` +
+        `The download was discarded and the model was not extracted.`,
+    );
+    this.name = "ModelArchiveIntegrityError";
+  }
+}
+
+async function computeFileSha256(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(filePath), hash);
+  return hash.digest("hex");
+}
+
+/**
+ * Verifies the archive against its pinned digest before anything unpacks it.
+ *
+ * On mismatch the file is removed rather than left behind: a partial or
+ * substituted download that stays on disk would be picked up by the
+ * isNonEmptyFile short-circuit on the next run and never re-fetched.
+ */
+async function verifyArchiveIntegrity(archivePath: string, expectedSha256: string): Promise<void> {
+  const actual = await computeFileSha256(archivePath);
+  if (actual === expectedSha256) {
+    return;
+  }
+  await rm(archivePath, { force: true }).catch(() => undefined);
+  throw new ModelArchiveIntegrityError(archivePath, expectedSha256, actual);
+}
+
 async function extractTarArchive(archivePath: string, destDir: string): Promise<void> {
   await mkdir(destDir, { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawnProcess("tar", ["xf", archivePath, "-C", destDir], {
-      stdio: "inherit",
-    });
+    // Absolute paths and `../` entries are stripped rather than trusted. The
+    // digest check above already establishes the archive is the one we pinned,
+    // so this is belt-and-braces against a future catalog entry.
+    const child = spawnProcess(
+      "tar",
+      ["xf", archivePath, "-C", destDir, "--no-absolute-names", "--no-overwrite-dir"],
+      {
+        stdio: "inherit",
+      },
+    );
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
@@ -121,6 +166,9 @@ export async function ensureSherpaOnnxModel(
         outputPath: archivePath,
       });
     }
+
+    logger.info({ modelId: options.modelId, archivePath }, "Verifying model archive integrity");
+    await verifyArchiveIntegrity(archivePath, spec.archiveSha256);
 
     logger.info(
       {

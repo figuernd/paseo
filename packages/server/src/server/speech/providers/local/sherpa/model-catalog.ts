@@ -7,6 +7,15 @@ type DefaultModelRole = "stt" | "tts";
 interface SherpaOnnxCatalogEntry {
   kind: SherpaOnnxModelKind;
   archiveUrl: string;
+  /**
+   * SHA-256 of the archive at archiveUrl, verified before extraction.
+   *
+   * The extracted ONNX files get loaded into the daemon process through native
+   * bindings, and TLS to GitHub is otherwise the only thing vouching for them.
+   * Recompute with:
+   *   curl -fsSL <archiveUrl> | sha256sum
+   */
+  archiveSha256: string;
   extractedDir: string;
   requiredFiles: string[];
   description: string;
@@ -18,6 +27,7 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     kind: "stt-offline",
     archiveUrl:
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+    archiveSha256: "157c157bc51155e03e37d2466522a3a737dd9c72bb25f36eb18912964161e1ad",
     extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
     requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
     description: "NVIDIA Parakeet TDT v2 (offline NeMo transducer, English).",
@@ -27,6 +37,7 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     kind: "stt-offline",
     archiveUrl:
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+    archiveSha256: "5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf",
     extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
     requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
     description:
@@ -36,6 +47,7 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     kind: "tts",
     archiveUrl:
       "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2",
+    archiveSha256: "912804855a04745fa77a30be545b3f9a5d15c4d66db00b88cbcd4921df605ac7",
     extractedDir: "kokoro-en-v0_19",
     requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
     description: "Kokoro TTS (higher quality; larger).",
