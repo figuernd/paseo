@@ -390,6 +390,18 @@ export interface PaseoDaemonConfig {
   trustedProxies?: true | string[];
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
+  /**
+   * Pins the Agent MCP capability token instead of minting a random one per
+   * daemon run. Set via PASEO_MCP_AUTH_TOKEN.
+   *
+   * Only needed when something outside the daemon process has to call
+   * /mcp/agents — an out-of-process test harness, or an operator driving their
+   * own MCP client. In-process callers read it from
+   * `agentManager.getMcpAuthToken()` instead. A pinned token outlives the
+   * process, so it is strictly weaker than the default; leave it unset unless
+   * you need it.
+   */
+  mcpAuthToken?: string;
   browserToolsEnabled?: boolean;
   /**
    * Include the agent's message preview in push notifications. Off by default:
@@ -595,7 +607,7 @@ export async function createPaseoDaemon(
   // no plaintext available). Mirrors the /api/files/download capability-token
   // pattern. Required on every /mcp/agents request, including when no daemon
   // password is configured — see isAgentMcpRequestAuthorized.
-  const agentMcpAuthToken = randomUUID();
+  const agentMcpAuthToken = config.mcpAuthToken ?? randomUUID();
 
   const listenTarget = parseListenString(config.listen);
 

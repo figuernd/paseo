@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import net from "node:net";
@@ -229,9 +230,10 @@ async function callBrowserTool(client, name, args = {}) {
   return mcpPayload(await client.callTool({ name, args }), name);
 }
 
-async function createCallerAgent(daemonPort) {
+async function createCallerAgent(daemonPort, mcpAuthToken) {
   const transport = new StreamableHTTPClientTransport(
     new URL(`http://127.0.0.1:${daemonPort}/mcp/agents`),
+    { requestInit: { headers: { Authorization: `Bearer ${mcpAuthToken}` } } },
   );
   const client = await experimental_createMCPClient({ transport });
   try {
@@ -378,10 +380,15 @@ async function main() {
   let client = null;
 
   try {
+    // /mcp/agents requires the daemon's capability token. This harness drives it
+    // from outside the daemon process, so it cannot read the token via
+    // agentManager.getMcpAuthToken() and pins one instead.
+    const mcpAuthToken = randomUUID();
     const commonEnv = {
       ...process.env,
       PASEO_HOME: paseoHome,
       PASEO_LISTEN: listen,
+      PASEO_MCP_AUTH_TOKEN: mcpAuthToken,
       PASEO_DAEMON_ENDPOINT: `localhost:${daemonPort}`,
       PASEO_CORS_ORIGINS: "*",
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
@@ -434,11 +441,12 @@ async function main() {
     const page = await waitForAppPage(browser, expoPort);
     const status = await waitForDesktopStatus(page);
 
-    const callerAgentId = await createCallerAgent(daemonPort);
+    const callerAgentId = await createCallerAgent(daemonPort, mcpAuthToken);
     const transport = new StreamableHTTPClientTransport(
       new URL(
         `http://127.0.0.1:${daemonPort}/mcp/agents?callerAgentId=${encodeURIComponent(callerAgentId)}`,
       ),
+      { requestInit: { headers: { Authorization: `Bearer ${mcpAuthToken}` } } },
     );
     client = await experimental_createMCPClient({ transport });
     const report = await runRegression({

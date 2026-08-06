@@ -456,7 +456,11 @@ function resolvePushIncludeContent(persisted: ReturnType<typeof loadPersistedCon
   return persisted.daemon?.push?.includeContent ?? false;
 }
 
-function resolveAllowTerminalTools(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
+function resolveMcpAuthToken(env: NodeJS.ProcessEnv): string | undefined {
+  return env.PASEO_MCP_AUTH_TOKEN?.trim() || undefined;
+}
+
+function resolveAllowDaemonExecution(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
   return persisted.daemon?.mcp?.allowDaemonExecution ?? false;
 }
 
@@ -467,11 +471,12 @@ function resolveStaticLoadConfigSettings(
 ) {
   return {
     mcpEnabled: cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? true,
+    mcpAuthToken: resolveMcpAuthToken(env),
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
     pushIncludeContent: resolvePushIncludeContent(persisted),
-    allowDaemonExecution: resolveAllowTerminalTools(persisted),
+    allowDaemonExecution: resolveAllowDaemonExecution(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -498,6 +503,7 @@ export function loadConfig(
   const listen = resolveListenAddress(env, options?.cli, persisted);
   const {
     mcpEnabled,
+    mcpAuthToken,
     mcpInjectIntoAgents,
     browserToolsEnabled,
     pushIncludeContent,
@@ -539,6 +545,7 @@ export function loadConfig(
     hostnames,
     trustedProxies,
     mcpEnabled,
+    mcpAuthToken,
     mcpInjectIntoAgents,
     browserToolsEnabled,
     pushIncludeContent,

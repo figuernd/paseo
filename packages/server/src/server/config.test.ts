@@ -26,6 +26,23 @@ describe("server config", () => {
     expect(standaloneConfig.desktopManaged).toBe(false);
   });
 
+  test("pins the agent MCP capability token from the environment", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-mcp-token-"));
+    roots.push(paseoHome);
+
+    // Out-of-process callers (the desktop browser-tabs harness, an operator's
+    // own MCP client) cannot read the in-process token, so they pin one.
+    expect(
+      loadConfig(paseoHome, { env: { PASEO_MCP_AUTH_TOKEN: "pinned-token" } }).mcpAuthToken,
+    ).toBe("pinned-token");
+
+    // Unset and blank both fall through to the per-run random token.
+    expect(loadConfig(paseoHome, { env: {} }).mcpAuthToken).toBeUndefined();
+    expect(
+      loadConfig(paseoHome, { env: { PASEO_MCP_AUTH_TOKEN: "   " } }).mcpAuthToken,
+    ).toBeUndefined();
+  });
+
   test("resolves bundled web UI path from source-tree modules", () => {
     const root = path.parse(process.cwd()).root;
     expect(
