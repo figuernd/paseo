@@ -36,7 +36,7 @@ The connector is a small process you run once. It reaches every Paseo host you c
 Give each host exactly one of:
 
 - `endpoint` — the same address you would pass to `paseo --host`, for machines the connector can reach directly.
-- `offer` — a pairing URL, for machines it cannot. Get one from **Settings → your host → Pair a device** and copy the link behind the QR code. This reaches the host over Paseo's encrypted relay, so nothing needs an open port.
+- `offer` — a pairing URL, for machines it cannot. Get one from **Settings → your host → Pair a device** and copy the link behind the QR code. This reaches the host over Paseo's encrypted relay, so nothing needs an open port. The link is a one-time invitation that expires after ten minutes, so generate it when you are ready to start the connector. Once paired, the connector shows up in `paseo daemon clients` on that host and you can revoke it there.
 
 Name hosts the way you will say them out loud. "mac mini" is a better name than `host-2`.
 

@@ -79,6 +79,11 @@ interface RelayTarget {
   kind: "relay";
   url: string;
   daemonPublicKeyB64: string;
+  /**
+   * Single-use enrollment token from the pairing offer. The daemon's public key is in every
+   * offer and is not a credential; this is what admits the connector to a relay session.
+   */
+  enrollToken: string;
 }
 
 export type HostTarget = DirectTarget | RelayTarget;
@@ -104,6 +109,7 @@ export function resolveHostTarget(host: ConnectorHostConfig): HostTarget {
         useTls: offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint),
       }),
       daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      enrollToken: offer.enroll,
     };
   }
 
@@ -207,7 +213,13 @@ class HostConnection implements HostHandle {
       connectTimeoutMs: this.options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS,
       ...(target.kind === "direct" && target.password ? { password: target.password } : {}),
       ...(target.kind === "relay"
-        ? { e2ee: { enabled: true, daemonPublicKeyB64: target.daemonPublicKeyB64 } }
+        ? {
+            e2ee: {
+              enabled: true,
+              daemonPublicKeyB64: target.daemonPublicKeyB64,
+              enrollToken: target.enrollToken,
+            },
+          }
         : {}),
       webSocketFactory: (
         url: string,

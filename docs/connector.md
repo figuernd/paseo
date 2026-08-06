@@ -81,7 +81,9 @@ Anyone holding the pairing code can start agents on every configured host, with 
 }
 ```
 
-Each host takes exactly one of `endpoint` or `offer`. Endpoints are the strings `paseo --host` already accepts. An offer is the pairing URL Paseo renders as a QR code; use it for anything you cannot reach directly, since it carries the daemon's public key and gets you the encrypted relay path.
+Each host takes exactly one of `endpoint` or `offer`. Endpoints are the strings `paseo --host` already accepts. An offer is the pairing URL Paseo renders as a QR code; use it for anything you cannot reach directly, since it gets you the encrypted relay path.
+
+An offer carries the daemon's public key **and** a single-use enrollment token, and the connector forwards both. The public key is in every offer the daemon renders, so it is not a credential — the token is what admits the connector, and the daemon redeems it on first handshake. Offers expire ten minutes after they are minted, so paste one into the config and start the connector rather than saving it for later.
 
 Host names are what you will say out loud, so pick names you would actually use. Duplicates are rejected — an ambiguous host name is an ambiguous voice command.
 
