@@ -1082,6 +1082,10 @@ describe("terminal MCP tools", () => {
       providerSnapshotManager: createOpenCodeManager().manager,
       terminalManager,
       logger,
+      // capture_terminal only exists when daemon execution is allowed; this test
+      // is about the capture behaviour, not the gate. The gate has its own suite
+      // in paseo-tools.daemon-execution-gating.test.ts.
+      allowDaemonExecution: true,
     });
     const tool = registeredTool(server, "capture_terminal");
 
