@@ -390,6 +390,13 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   browserToolsEnabled?: boolean;
+  /**
+   * Include the agent's message preview in push notifications. Off by default:
+   * push leaves the machine in plaintext to Expo and then Apple/Google, outside
+   * the relay's E2E encryption. Notifications delivered over the WebSocket keep
+   * their preview either way.
+   */
+  pushIncludeContent?: boolean;
   git?: {
     maxProcessesPerSecond: number;
     maxProcessConcurrency: number;
@@ -1516,6 +1523,7 @@ export async function createPaseoDaemon(
                 hostnames: configuredHostnames,
                 daemonStatusRpc: dependencies.serverFeatureOverrides?.daemonStatusRpc,
                 relayConfig: dependencies.serverFeatureOverrides?.relayConfig,
+                pushIncludeContent: config.pushIncludeContent === true,
               },
               workspaceAutoName,
               config.auth,

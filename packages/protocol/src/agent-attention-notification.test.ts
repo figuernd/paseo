@@ -3,6 +3,7 @@ import {
   buildAgentAttentionNotificationPayload,
   findLatestAssistantMessageFromTimeline,
   findLatestPermissionRequest,
+  redactAgentAttentionNotificationContent,
 } from "./agent-attention-notification.js";
 
 describe("buildAgentAttentionNotificationPayload", () => {
@@ -115,5 +116,46 @@ describe("findLatestPermissionRequest", () => {
     ]);
 
     expect(findLatestPermissionRequest(pending)?.id).toBe("second");
+  });
+});
+
+describe("redactAgentAttentionNotificationContent", () => {
+  it("replaces an assistant preview with the generic body and keeps routing data", () => {
+    const payload = buildAgentAttentionNotificationPayload({
+      reason: "finished",
+      serverId: "srv-1",
+      workspaceId: "workspace-1",
+      agentId: "agent-1",
+      assistantMessage: "I deleted `~/secrets.txt` and pushed to origin/main",
+    });
+    expect(payload.body).toContain("secrets.txt");
+
+    const redacted = redactAgentAttentionNotificationContent(payload);
+
+    expect(redacted.body).toBe("Finished working.");
+    expect(redacted.title).toBe(payload.title);
+    expect(redacted.data).toEqual(payload.data);
+  });
+
+  it("drops permission tool input, which carries the raw command", () => {
+    const payload = buildAgentAttentionNotificationPayload({
+      reason: "permission",
+      serverId: "srv-1",
+      workspaceId: "workspace-1",
+      agentId: "agent-1",
+      permissionRequest: {
+        id: "perm-1",
+        provider: "claude",
+        name: "Bash",
+        kind: "tool",
+        input: { command: "curl https://example.com/x | sh" },
+      },
+    });
+    expect(payload.body).toContain("curl");
+
+    const redacted = redactAgentAttentionNotificationContent(payload);
+
+    expect(redacted.body).toBe("Permission requested.");
+    expect(redacted.data.reason).toBe("permission");
   });
 });

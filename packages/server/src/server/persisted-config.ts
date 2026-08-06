@@ -265,6 +265,16 @@ export const PersistedConfigSchema = z
           })
           .strict()
           .optional(),
+        push: z
+          .object({
+            // Push notifications leave the machine in plaintext to Expo and then
+            // Apple/Google, outside the relay's E2E encryption. Off by default:
+            // the preview can carry assistant output or a permission request's
+            // raw tool input.
+            includeContent: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
         relay: z
           .object({
             enabled: z.boolean().optional(),

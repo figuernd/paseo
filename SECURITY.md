@@ -42,6 +42,18 @@ The daemon requires a valid cryptographic handshake before processing any comman
 
 The QR code or pairing link is the trust anchor. It contains the daemon's public key, which is required to establish the encrypted connection. Treat it like a password — don't share it publicly.
 
+## Push notifications
+
+Push is the one path that leaves your machine outside the relay's end-to-end encryption. The daemon posts to Expo's push service, which forwards through Apple or Google. Those three parties see whatever the notification carries.
+
+So the notification carries as little as possible. By default the body is a fixed string — "Finished working.", "Permission requested." — and the data payload holds only the IDs needed to open the right screen: server, workspace, agent or terminal. No file paths, no working directory, no agent output.
+
+Set `daemon.push.includeContent` to `true` in `config.json` to put the agent's message preview in the body instead. That preview is up to 220 characters of assistant output, or for a permission prompt the tool input itself, which is typically the command awaiting approval. Turn it on when you want a useful lock screen and accept that Expo, Apple, and Google see it.
+
+Notifications delivered over the WebSocket are unaffected either way. Those reach paired clients inside the encrypted channel and always carry the full preview, so the in-app experience is the same.
+
+Nothing is sent until a mobile client registers a push token, which requires granting the OS notification permission. Deny it, or use only the desktop app, CLI, or browser, and the daemon never contacts Expo.
+
 ## Local daemon trust boundary
 
 By default, the daemon binds to `127.0.0.1`. With no password configured, the local control plane is trusted by network reachability — anything that can reach the daemon socket can control the daemon. This is the same security model Docker documents for its daemon: the security boundary is access to the socket or listening address.

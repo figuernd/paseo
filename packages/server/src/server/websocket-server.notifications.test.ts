@@ -83,7 +83,10 @@ class RecordingPushNotificationSender implements PushNotificationSender {
   }
 }
 
-function createServer(agentManagerOverrides?: Record<string, unknown>) {
+function createServer(
+  agentManagerOverrides?: Record<string, unknown>,
+  wsConfigOverrides?: { pushIncludeContent?: boolean },
+) {
   const pushNotifications = new RecordingPushNotificationSender();
   const agentManager = {
     subscribe: vi.fn(() => () => {}),
@@ -115,7 +118,7 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     "/tmp/paseo-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
-    { allowedOrigins: new Set() },
+    { allowedOrigins: new Set(), ...wsConfigOverrides },
     createWorkspaceAutoNameStub(),
     undefined,
     undefined,
@@ -223,15 +226,19 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
     const getLastAssistantMessage = vi.fn(
       async () => "**Done**. Updated `README.md` and [link](https://example.com).",
     );
-    const { server, pushNotifications } = createServer({
-      getAgent: vi.fn(() => ({
-        config: { title: null },
-        cwd: "/tmp/worktree",
-        workspaceId: WORKSPACE_ID,
-        pendingPermissions: new Map(),
-      })),
-      getLastAssistantMessage,
-    });
+    const { server, pushNotifications } = createServer(
+      {
+        getAgent: vi.fn(() => ({
+          config: { title: null },
+          cwd: "/tmp/worktree",
+          workspaceId: WORKSPACE_ID,
+          pendingPermissions: new Map(),
+        })),
+        getLastAssistantMessage,
+      },
+      // Previews reach Expo in plaintext, so they are opt-in.
+      { pushIncludeContent: true },
+    );
 
     await asInternals<WebSocketServerInternals>(server).broadcastAgentAttention({
       agentId: "agent-1",
@@ -252,6 +259,40 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
       },
     ]);
     expect(getLastAssistantMessage).toHaveBeenCalledWith("agent-1");
+  });
+
+  it("omits the assistant preview from push notifications by default", async () => {
+    const getLastAssistantMessage = vi.fn(
+      async () => "Removed ~/.ssh/id_rsa and force-pushed to main.",
+    );
+    const { server, pushNotifications } = createServer({
+      getAgent: vi.fn(() => ({
+        config: { title: null },
+        cwd: "/tmp/worktree",
+        workspaceId: WORKSPACE_ID,
+        pendingPermissions: new Map(),
+      })),
+      getLastAssistantMessage,
+    });
+
+    await asInternals<WebSocketServerInternals>(server).broadcastAgentAttention({
+      agentId: "agent-1",
+      provider: "claude",
+      reason: "finished",
+    });
+
+    expect(pushNotifications.sent).toEqual([
+      {
+        title: "Agent finished",
+        body: "Finished working.",
+        data: {
+          serverId: "srv-test",
+          workspaceId: WORKSPACE_ID,
+          agentId: "agent-1",
+          reason: "finished",
+        },
+      },
+    ]);
   });
 
   it("sends push notifications regardless of UI label presence", async () => {
