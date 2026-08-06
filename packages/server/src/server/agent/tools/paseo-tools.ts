@@ -95,6 +95,18 @@ export interface PaseoToolHostDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
+  /**
+   * Register the terminal tools that create a PTY or write to one. Off by
+   * default.
+   *
+   * The PTY is a child of the daemon, not of the agent, so it does not inherit
+   * the agent's own sandbox — a Codex session pinned to `networkAccess: false`
+   * or a Claude session in a restricted permission mode can otherwise obtain an
+   * unrestricted shell by calling create_terminal and send_terminal_keys.
+   * Read-only listing stays available so an agent can still describe what is
+   * running.
+   */
+  allowTerminalTools?: boolean;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   providerSnapshotManager: ProviderSnapshotManager;
@@ -540,6 +552,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     agentManager,
     agentStorage,
     terminalManager,
+    allowTerminalTools,
     workspaceScripts,
     scheduleService,
     providerSnapshotManager,
@@ -581,6 +594,16 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       handler: handler as PaseoToolDefinition["handler"],
     });
   };
+  // Terminal tools that spawn a PTY or write into one. The PTY belongs to the
+  // daemon, so it sidesteps whatever sandbox the calling agent runs under —
+  // registration is opt-in. See PaseoToolHostDependencies.allowTerminalTools.
+  const registerTerminalTool: typeof registerTool = (name, config, handler) => {
+    if (allowTerminalTools !== true) {
+      return;
+    }
+    registerTool(name, config, handler);
+  };
+
   const toCatalog = (): PaseoToolCatalog => ({
     tools,
     getTool(name: string): PaseoToolDefinition | undefined {
@@ -2349,7 +2372,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerTerminalTool(
     "create_terminal",
     {
       title: "Create terminal",
@@ -2388,7 +2411,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerTerminalTool(
     "kill_terminal",
     {
       title: "Kill terminal",
@@ -2419,7 +2442,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerTerminalTool(
     "capture_terminal",
     {
       title: "Capture terminal",
@@ -2463,7 +2486,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerTerminalTool(
     "send_terminal_keys",
     {
       title: "Send terminal keys",

@@ -442,6 +442,10 @@ function resolvePushIncludeContent(persisted: ReturnType<typeof loadPersistedCon
   return persisted.daemon?.push?.includeContent ?? false;
 }
 
+function resolveAllowTerminalTools(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
+  return persisted.daemon?.mcp?.allowTerminalTools ?? false;
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -453,6 +457,7 @@ function resolveStaticLoadConfigSettings(
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
     pushIncludeContent: resolvePushIncludeContent(persisted),
+    allowTerminalTools: resolveAllowTerminalTools(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -482,6 +487,7 @@ export function loadConfig(
     mcpInjectIntoAgents,
     browserToolsEnabled,
     pushIncludeContent,
+    allowTerminalTools,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -522,6 +528,7 @@ export function loadConfig(
     mcpInjectIntoAgents,
     browserToolsEnabled,
     pushIncludeContent,
+    allowTerminalTools,
     git: resolveGitProcessConfig(env, persisted),
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,

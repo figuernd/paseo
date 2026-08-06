@@ -239,6 +239,10 @@ export const PersistedConfigSchema = z
           .object({
             enabled: z.boolean().optional(),
             injectIntoAgents: z.boolean().optional(),
+            // Lets an agent spawn and drive a PTY through the Paseo tools. That
+            // PTY is a child of the daemon, so it escapes the agent's own
+            // sandbox. Off by default.
+            allowTerminalTools: z.boolean().optional(),
           })
           .passthrough()
           .optional(),

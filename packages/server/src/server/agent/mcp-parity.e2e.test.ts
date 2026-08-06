@@ -80,8 +80,11 @@ function getStructuredContent(result: McpToolResult): StructuredContent | null {
   return null;
 }
 
-async function createMcpClient(url: string): Promise<McpClient> {
-  const transport = new StreamableHTTPClientTransport(new URL(url));
+async function createMcpClient(url: string, authToken?: string): Promise<McpClient> {
+  const transport = new StreamableHTTPClientTransport(
+    new URL(url),
+    authToken ? { requestInit: { headers: { Authorization: `Bearer ${authToken}` } } } : undefined,
+  );
   const rawClient = await experimental_createMCPClient({ transport });
   const boundCallTool: McpClient["callTool"] = Reflect.get(rawClient, "callTool").bind(rawClient);
   return { callTool: boundCallTool, close: () => rawClient.close() };
@@ -285,8 +288,15 @@ beforeAll(async () => {
   parentAgentCwd = await makeCwd("parent-agent-cwd");
   worktreeRepoCwd = await makeCwd("worktree-repo");
 
-  daemonHandle = await createTestPaseoDaemon({ agentClients: createRecordingAgentClients() });
-  topLevelClient = await createMcpClient(`http://127.0.0.1:${daemonHandle.port}/mcp/agents`);
+  daemonHandle = await createTestPaseoDaemon({
+    agentClients: createRecordingAgentClients(),
+    // Suite B drives PTYs through the tool catalog, which is opt-in.
+    allowTerminalTools: true,
+  });
+  topLevelClient = await createMcpClient(
+    `http://127.0.0.1:${daemonHandle.port}/mcp/agents`,
+    daemonHandle.daemon.agentManager.getMcpAuthToken() ?? undefined,
+  );
 
   const parentPayload = await callToolStructured(topLevelClient, "create_agent", {
     relationship: { kind: "detached" },
@@ -301,6 +311,7 @@ beforeAll(async () => {
 
   agentScopedClient = await createMcpClient(
     `http://127.0.0.1:${daemonHandle.port}/mcp/agents?callerAgentId=${parentAgentId}`,
+    daemonHandle.daemon.agentManager.getMcpAuthToken() ?? undefined,
   );
 
   execSync("git init -b main", { cwd: worktreeRepoCwd, stdio: "pipe" });

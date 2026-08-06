@@ -22,6 +22,7 @@ interface TestPaseoDaemonOptions {
   logger?: Parameters<typeof createPaseoDaemon>[1];
   mcpEnabled?: boolean;
   mcpDebug?: boolean;
+  allowTerminalTools?: boolean;
   isDev?: boolean;
   relayEnabled?: boolean;
   relayEndpoint?: string;
@@ -173,6 +174,7 @@ async function prepareTestDaemonConfig(
     mcpEnabled: options.mcpEnabled ?? true,
     staticDir,
     mcpDebug: options.mcpDebug ?? false,
+    allowTerminalTools: options.allowTerminalTools ?? false,
     isDev: options.isDev,
     agentClients: options.agentClients ?? createTestAgentClients(),
     providerOverrides: options.providerOverrides,
