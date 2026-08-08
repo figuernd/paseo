@@ -157,9 +157,25 @@ function hostConnectionEquals(left: HostConnection, right: HostConnection): bool
   return false;
 }
 
-/** Full record equality, including the credentials {@link hostConnectionEquals} ignores. */
+/**
+ * Identity, plus the credentials {@link hostConnectionEquals} ignores.
+ *
+ * Deliberately not a structural comparison. `hostConnectionEquals` treats an
+ * absent `useTls` as false and ignores key order, so a stored record and an
+ * equivalent freshly-built one can differ byte-for-byte while meaning the same
+ * thing. Comparing serialized form would call that "changed" on every upsert,
+ * rewriting the profile and its `updatedAt` forever.
+ */
 function hostConnectionRecordEquals(left: HostConnection, right: HostConnection): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  if (!hostConnectionEquals(left, right)) {
+    return false;
+  }
+  if (left.type === "relay" && right.type === "relay") {
+    return (
+      left.enrollToken === right.enrollToken && left.clientSecretKeyB64 === right.clientSecretKeyB64
+    );
+  }
+  return true;
 }
 
 function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean {

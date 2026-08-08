@@ -208,6 +208,32 @@ describe("upsertHostConnectionInProfiles", () => {
       clientSecretKeyB64: "fresh-client-key",
     });
   });
+
+  it("reports no change when the same host reconnects", () => {
+    // Change detection has to tolerate the normalization the identity test
+    // already does — an absent useTls means false. Comparing serialized records
+    // instead would rewrite the profile and bump updatedAt on every reconnect.
+    const stored: HostConnection = {
+      id: "direct:localhost:6767",
+      type: "directTcp",
+      endpoint: "localhost:6767",
+      useTls: false,
+    };
+    const existing: HostProfile = {
+      ...makeHost("srv_known"),
+      connections: [stored],
+      preferredConnectionId: stored.id,
+    };
+    const profiles = [existing];
+
+    expect(
+      upsertHostConnectionInProfiles({
+        profiles,
+        serverId: "srv_known",
+        connection: { id: stored.id, type: "directTcp", endpoint: "localhost:6767" },
+      }),
+    ).toBe(profiles);
+  });
 });
 
 describe("resolveActiveHostServerId", () => {
