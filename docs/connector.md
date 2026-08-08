@@ -85,6 +85,8 @@ Each host takes exactly one of `endpoint` or `offer`. Endpoints are the strings 
 
 An offer carries the daemon's public key **and** a single-use enrollment token, and the connector forwards both. The public key is in every offer the daemon renders, so it is not a credential — the token is what admits the connector, and the daemon redeems it on first handshake. Offers expire ten minutes after they are minted, so paste one into the config and start the connector rather than saving it for later.
 
+What the daemon enrolls is the connector's own Curve25519 key, so that key has to outlive the process. It is generated on first run and kept beside the config as `connector-client-key`, mode `0600`; one identity covers every host, because each daemon records it separately when redeeming its own offer. Delete it and every relay host needs a fresh pairing offer. The relay channel mints a throwaway key when given none, which enrolls once and is refused on the next connection — that is the failure this file exists to prevent.
+
 Host names are what you will say out loud, so pick names you would actually use. Duplicates are rejected — an ambiguous host name is an ambiguous voice command.
 
 `GET /health` answers liveness and nothing else. It is unauthenticated and public, so it must never describe the hosts behind it; use `list_hosts` through an authenticated session for that.

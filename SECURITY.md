@@ -44,7 +44,7 @@ The QR code or pairing link is the trust anchor. It carries the daemon's public 
 
 The public key alone is not a credential — it appears in every offer the daemon renders. The enrollment token is what admits a device: the daemon redeems it on that device's first handshake, records the device's key, and discards the token. A link that leaks therefore admits at most the first device to use it, and that device shows up in `paseo daemon clients` rather than going unnoticed. Unredeemed tokens expire after 10 minutes.
 
-After enrollment, the device's own key is what gets it back in, so the link is spent and no longer worth anything. The app stores that key with the host profile; the CLI keeps one at `$PASEO_HOME/cli-client-key`, mode `0600`. Anything that can read those files can reconnect as that device until you revoke it.
+After enrollment, the device's own key is what gets it back in, so the link is spent and no longer worth anything. The app stores that key with the host profile; the CLI keeps one at `$PASEO_HOME/cli-client-key`, mode `0600`; the connector keeps one next to its config as `connector-client-key`, same mode. Anything that can read those files can reconnect as that device until you revoke it.
 
 Manage paired devices from the daemon machine:
 

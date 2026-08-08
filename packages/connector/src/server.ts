@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 
 import type { ConnectorConfig } from "./config.js";
+import { getOrCreateClientSecretKey } from "./hosts/client-identity.js";
 import { createHostRegistry, type HostRegistry } from "./hosts/host-registry.js";
 import { createConnectorMcpServer } from "./mcp/server.js";
 import { createOAuthSubsystem, MCP_PATH, type OAuthSubsystem } from "./oauth/routes.js";
@@ -36,12 +37,16 @@ export function createConnectorApp(options: {
   oauth?: OAuthSubsystem;
 }): ConnectorApp {
   const logger = options.logger ?? consoleLogger;
+  const stateDir = path.dirname(options.config.configPath);
   const registry =
     options.registry ??
     createHostRegistry({
       hosts: options.config.hosts,
       clientId: options.clientId,
       appVersion: options.version,
+      // Kept beside the config rather than in $PASEO_HOME: the connector's config path is
+      // relocatable, and its identity belongs with the hosts it was enrolled against.
+      clientSecretKeyB64: getOrCreateClientSecretKey(path.join(stateDir, "connector-client-key")),
       logger,
     });
 
@@ -50,7 +55,7 @@ export function createConnectorApp(options: {
     createOAuthSubsystem({
       publicUrl: options.config.publicUrl,
       pairingCode: options.config.pairingCode,
-      statePath: path.join(path.dirname(options.config.configPath), "connector-oauth.json"),
+      statePath: path.join(stateDir, "connector-oauth.json"),
     });
 
   const app = express();

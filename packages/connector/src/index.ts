@@ -5,6 +5,7 @@ export {
   normalizePublicUrl,
 } from "./config.js";
 export type { ConnectorConfig, ConnectorHostConfig } from "./config.js";
+export { getOrCreateClientSecretKey } from "./hosts/client-identity.js";
 export { createHostRegistry, resolveHostTarget } from "./hosts/host-registry.js";
 export type { HostHandle, HostRegistry, HostStatus, HostTarget } from "./hosts/host-registry.js";
 export { createConnectorMcpServer, CONNECTOR_SERVER_NAME } from "./mcp/server.js";

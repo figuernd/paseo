@@ -48,6 +48,11 @@ export interface HostRegistryOptions {
   hosts: ConnectorHostConfig[];
   clientId: string;
   appVersion: string;
+  /**
+   * Base64 Curve25519 secret key identifying this connector to relay hosts. Enrollment binds a
+   * daemon's approval to it, so it must be the same key on every connection.
+   */
+  clientSecretKeyB64?: string;
   connectTimeoutMs?: number;
   logger?: {
     info(obj: object, msg?: string): void;
@@ -218,6 +223,9 @@ class HostConnection implements HostHandle {
               enabled: true,
               daemonPublicKeyB64: target.daemonPublicKeyB64,
               enrollToken: target.enrollToken,
+              ...(this.options.clientSecretKeyB64
+                ? { clientSecretKeyB64: this.options.clientSecretKeyB64 }
+                : {}),
             },
           }
         : {}),
