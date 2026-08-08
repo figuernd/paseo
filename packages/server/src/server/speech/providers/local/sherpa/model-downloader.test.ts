@@ -71,7 +71,14 @@ describe("sherpa model downloader", () => {
     expect(existsSync(getSherpaOnnxModelDir(modelsDir, "kokoro-en-v0_19"))).toBe(false);
   });
 
-  test("extracts a real archive with the platform's tar", async () => {
+  // Both tar tests are POSIX-only. The catalog ships .tar.bz2, and the bsdtar
+  // bundled with Windows has no bzip2 decompressor, so `tar xf` exits 1 there
+  // regardless of what this code does. That is a real gap in Windows support
+  // for local speech models, not something these tests can assert around — they
+  // exist to catch unportable *flags* on the platforms that do extract.
+  const testOnPosix = test.skipIf(process.platform === "win32");
+
+  testOnPosix("extracts a real archive with the platform's tar", async () => {
     // The digest-mismatch test never reaches tar, so it could not catch an
     // unportable invocation. An earlier revision passed --no-absolute-names,
     // which bsdtar (macOS) and GNU tar 1.35 both reject, breaking every fresh
@@ -95,7 +102,7 @@ describe("sherpa model downloader", () => {
     expect(existsSync(path.join(extracted, "espeak-ng-data"))).toBe(true);
   });
 
-  test("keeps a traversing archive inside the destination", async () => {
+  testOnPosix("keeps a traversing archive inside the destination", async () => {
     // tar strips leading `/` and `../` from member names by default, which is
     // why the extract invocation carries no hardening flags.
     const stageRoot = makeTmpDir();

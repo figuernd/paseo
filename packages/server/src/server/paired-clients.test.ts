@@ -167,15 +167,20 @@ describe("paired client store", () => {
     });
   });
 
-  test("stores the file with owner-only permissions", async () => {
-    const home = await makeHome();
-    const store = new PairedClientStore(home);
-    store.createEnrollment();
+  // Windows has no POSIX mode bits; node reports 0o666 there no matter what we
+  // asked for. Same gate as the persisted-config permissions suite.
+  test.skipIf(process.platform === "win32")(
+    "stores the file with owner-only permissions",
+    async () => {
+      const home = await makeHome();
+      const store = new PairedClientStore(home);
+      store.createEnrollment();
 
-    const stats = await stat(path.join(home, "paired-clients.json"));
+      const stats = await stat(path.join(home, "paired-clients.json"));
 
-    expect(stats.mode & 0o777).toBe(0o600);
-  });
+      expect(stats.mode & 0o777).toBe(0o600);
+    },
+  );
 
   test("starts empty rather than locking the operator out of a corrupt file", async () => {
     const home = await makeHome();
