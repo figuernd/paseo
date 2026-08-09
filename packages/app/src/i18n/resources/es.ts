@@ -2083,6 +2083,11 @@ export const es: TranslationResources = {
         rowTitle: "Emparejar un dispositivo",
         rowHint: "Escanee un códigoQRo copie un enlace para conectar su teléfono a este host",
       },
+      relay: {
+        title: "Relé",
+        hint: "Permite que los dispositivos emparejados alcancen este host desde cualquier lugar. El daemon mantiene una conexión saliente con el relé mientras esto esté activado. El tráfico sigue cifrado de extremo a extremo; el relé solo ve metadatos de conexión.",
+        accessibilityLabel: "Conexión de relé",
+      },
       orchestration: {
         title: "Orquestación",
         unavailable: "Conéctese a este host para administrar la orquestación",

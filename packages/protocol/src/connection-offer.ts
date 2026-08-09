@@ -10,6 +10,14 @@ export const ConnectionOfferV2Schema = z.object({
   v: z.literal(2),
   serverId: z.string().min(1),
   daemonPublicKeyB64: z.string().min(1),
+  /**
+   * Single-use enrollment token, redeemed on the client's first handshake.
+   *
+   * The daemon public key above is not a credential — it is in every offer.
+   * This is what makes an offer a one-time invitation rather than a permanent
+   * grant, so it is required.
+   */
+  enroll: z.string().min(1),
   relay: z.object({
     endpoint: z.string().min(1),
     useTls: z.boolean().optional(),

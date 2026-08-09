@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react-native";
 import type { TFunction } from "i18next";
+import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
@@ -42,6 +43,7 @@ import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { createRelayPatch, getRelayCardState, getRelayMutationViewState } from "./relay-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
   getHostRuntimeStore,
@@ -262,6 +264,7 @@ export function HostPairDevicePage({ serverId }: { serverId: string }) {
   return (
     <SettingsSection title={t("settings.host.pairDevices.title")}>
       <PairDeviceRow serverId={serverId} />
+      <RelayEnabledCard serverId={serverId} />
     </SettingsSection>
   );
 }
@@ -968,6 +971,59 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
           />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function RelayEnabledCard({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+
+  const mutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      const result = await patchConfig(createRelayPatch(next));
+      if (!result) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      return result;
+    },
+  });
+  const mutationView = getRelayMutationViewState({
+    isPending: mutation.isPending,
+    error: mutation.error,
+  });
+
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      mutation.mutate(next);
+    },
+    [mutation],
+  );
+
+  const { isVisible, isEnabled } = getRelayCardState({ isConnected, config: config ?? null });
+  if (!isVisible) return null;
+
+  return (
+    <View style={settingsStyles.card} testID="host-page-relay-card">
+      <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.relay.title")}</Text>
+          <Text style={settingsStyles.rowHint}>{t("settings.host.relay.hint")}</Text>
+          {mutationView.errorText ? (
+            <Text style={settingsStyles.rowError} testID="host-page-relay-error">
+              {mutationView.errorText}
+            </Text>
+          ) : null}
+        </View>
+        <Switch
+          value={isEnabled}
+          onValueChange={handleValueChange}
+          disabled={mutationView.isSwitchDisabled}
+          accessibilityLabel={t("settings.host.relay.accessibilityLabel")}
+          testID="host-page-relay-switch"
+        />
+      </View>
     </View>
   );
 }

@@ -4,6 +4,7 @@ import { WebSocket } from "ws";
 import type pino from "pino";
 import {
   createDaemonChannel,
+  type ClientAuthorizer,
   type Transport as RelayTransport,
   type KeyPair,
 } from "@getpaseo/relay/e2ee";
@@ -18,11 +19,25 @@ export interface RelayTransportOptions {
   relayUseTls: boolean;
   serverId: string;
   daemonKeyPair?: KeyPair;
+  /**
+   * Decides which clients may open a session. Without it the daemon's public
+   * key — which ships in every pairing link — would be the only credential.
+   */
+  authorizeClient: ClientAuthorizer;
   createWebSocket?: RelayWebSocketFactory;
 }
 
 export interface RelayTransportController {
   stop: () => Promise<void>;
+  /**
+   * Closes every live session belonging to a client key, returning how many
+   * were closed.
+   *
+   * Revocation has to reach into open channels: dropping a key from the store
+   * only stops the *next* handshake, and a revoked device holding an
+   * established session would otherwise keep it until it happened to reconnect.
+   */
+  closeClientSessions: (clientPublicKeyB64: string) => number;
 }
 
 export interface RelaySocketLike {
@@ -113,6 +128,7 @@ export function startRelayTransport({
   relayUseTls,
   serverId,
   daemonKeyPair,
+  authorizeClient,
   createWebSocket = createDefaultRelayWebSocket,
 }: RelayTransportOptions): RelayTransportController {
   const relayLogger = logger.child({ module: "relay-transport" });
@@ -122,6 +138,7 @@ export function startRelayTransport({
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   let reconnectAttempt = 0;
   const dataSockets = new Map<string, RelayWebSocketLike>(); // connectionId -> ws
+  const sessionsByClientKey = new Map<string, Set<() => void>>(); // client public key -> closers
   let controlKeepaliveInterval: ReturnType<typeof setInterval> | null = null;
   let controlReadyTimeout: ReturnType<typeof setTimeout> | null = null;
   let controlLastSeenAt = 0;
@@ -383,8 +400,10 @@ export function startRelayTransport({
         void attachEncryptedSocket(
           socket,
           daemonKeyPair,
+          authorizeClient,
           relayLogger.child({ connectionId }),
           attachSocket,
+          sessionsByClientKey,
           externalMetadata,
         );
       } else {
@@ -408,18 +427,45 @@ export function startRelayTransport({
     });
   };
 
+  const closeClientSessions = (clientPublicKeyB64: string): number => {
+    const closers = sessionsByClientKey.get(clientPublicKeyB64);
+    if (!closers) return 0;
+    const count = closers.size;
+    for (const close of Array.from(closers)) {
+      try {
+        close();
+      } catch (error) {
+        relayLogger.warn({ err: error }, "Failed to close a revoked client session");
+      }
+    }
+    sessionsByClientKey.delete(clientPublicKeyB64);
+    return count;
+  };
+
   connectControl();
 
-  return { stop };
+  return { stop, closeClientSessions };
 }
 
 async function attachEncryptedSocket(
   socket: RelayWebSocketLike,
   daemonKeyPair: KeyPair,
+  authorizeClient: ClientAuthorizer,
   logger: pino.Logger,
   attachSocket: (ws: RelaySocketLike, metadata?: ExternalSocketMetadata) => Promise<void>,
+  sessionsByClientKey: Map<string, Set<() => void>>,
   metadata?: ExternalSocketMetadata,
 ): Promise<void> {
+  // The authorizer is the only place the client's key is known, so capture it
+  // there to key the session registry.
+  let clientPublicKeyB64: string | null = null;
+  const captureAuthorizedKey: ClientAuthorizer = async (input) => {
+    const allowed = await authorizeClient(input);
+    if (allowed) {
+      clientPublicKeyB64 = input.clientPublicKeyB64;
+    }
+    return allowed;
+  };
   try {
     const relayTransport = createRelayTransportAdapter(socket, logger);
     const emitter = new EventEmitter();
@@ -432,7 +478,7 @@ async function attachEncryptedSocket(
       }
       pendingMessages.push(data);
     };
-    const channel = await createDaemonChannel(relayTransport, daemonKeyPair, {
+    const channel = await createDaemonChannel(relayTransport, daemonKeyPair, captureAuthorizedKey, {
       onmessage: emitMessage,
       onclose: (code, reason) => emitter.emit("close", code, reason),
       onerror: (error) => {
@@ -446,6 +492,18 @@ async function attachEncryptedSocket(
       getTransportBufferedAmount: () => socket.bufferedAmount,
       terminateTransport: () => socket.terminate(),
     });
+    if (clientPublicKeyB64) {
+      const key: string = clientPublicKeyB64;
+      const closers = sessionsByClientKey.get(key) ?? new Set<() => void>();
+      const close = () => encryptedSocket.close(4403, "Client revoked");
+      closers.add(close);
+      sessionsByClientKey.set(key, closers);
+      emitter.on("close", () => {
+        closers.delete(close);
+        if (closers.size === 0) sessionsByClientKey.delete(key);
+      });
+    }
+
     await attachSocket(encryptedSocket, metadata);
     attached = true;
     for (const message of pendingMessages) {

@@ -73,6 +73,27 @@ export function isHostnameAllowed(
   return false;
 }
 
+/**
+ * True when a hostname resolves to this machine and never traverses a network.
+ *
+ * Used to decide whether a connection can safely default to plaintext.
+ */
+export function isLoopbackHostname(hostname: string): boolean {
+  const normalized = (
+    hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname
+  )
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) {
+    return true;
+  }
+  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1") {
+    return true;
+  }
+  return /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
 export function mergeHostnames(values: Array<HostnamesConfig>): HostnamesConfig {
   let merged: string[] = [];
   for (const value of values) {

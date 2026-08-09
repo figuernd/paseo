@@ -1,3 +1,4 @@
+import { exportSecretKey, generateKeyPair } from "@getpaseo/relay/e2ee";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
@@ -175,6 +176,10 @@ export default function PairScanScreen() {
         const offerPayload = decodeOfferFragmentPayload(encoded);
         const offer = ConnectionOfferSchema.parse(offerPayload);
 
+        // The probe is what redeems the one-time token, so it must use the
+        // identity the saved profile will keep. A fresh key on the next
+        // connection would be refused against an already-spent token.
+        const clientSecretKeyB64 = exportSecretKey(generateKeyPair().secretKey);
         const { client, hostname } = await connectToDaemon(
           {
             id: "probe",
@@ -182,12 +187,18 @@ export default function PairScanScreen() {
             relayEndpoint: normalizeHostPort(offer.relay.endpoint),
             useTls: offer.relay.useTls,
             daemonPublicKeyB64: offer.daemonPublicKeyB64,
+            enrollToken: offer.enroll,
+            clientSecretKeyB64,
           },
           { serverId: offer.serverId },
         );
         await client.close().catch(() => undefined);
 
-        const profile = await upsertDaemonFromOfferUrl(offerUrl, hostname ?? undefined);
+        const profile = await upsertDaemonFromOfferUrl(
+          offerUrl,
+          hostname ?? undefined,
+          clientSecretKeyB64,
+        );
 
         navigateToPairedHost(profile.serverId);
       } catch (error) {

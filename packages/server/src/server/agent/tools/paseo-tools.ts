@@ -95,6 +95,26 @@ export interface PaseoToolHostDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager?: TerminalManager | null;
+  /**
+   * Register the tools that run a command in a daemon-owned process. Off by
+   * default.
+   *
+   * These processes are children of the daemon, not of the agent, so they do
+   * not inherit the agent's own sandbox — a Codex session pinned to
+   * `networkAccess: false` or a Claude session in a restricted permission mode
+   * can otherwise obtain an unrestricted shell. Two routes reach that:
+   * create_terminal plus send_terminal_keys, and start_workspace_script, which
+   * runs a command read from the workspace's paseo.json — a file the agent can
+   * edit first.
+   *
+   * Read-only tools (list_terminals, list_workspace_scripts) stay available so
+   * an agent can still describe what is running.
+   *
+   * Not covered: create_agent and send_agent_prompt also start daemon-owned
+   * processes, but spawning agents is the product's purpose and carries its own
+   * per-agent permission mode. Gating those belongs to a separate decision.
+   */
+  allowDaemonExecution?: boolean;
   getDaemonTcpPort?: () => number | null;
   scheduleService?: ScheduleService | null;
   providerSnapshotManager: ProviderSnapshotManager;
@@ -540,6 +560,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     agentManager,
     agentStorage,
     terminalManager,
+    allowDaemonExecution,
     workspaceScripts,
     scheduleService,
     providerSnapshotManager,
@@ -581,6 +602,16 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       handler: handler as PaseoToolDefinition["handler"],
     });
   };
+  // Tools that run a command in a daemon-owned process. Those processes sidestep
+  // whatever sandbox the calling agent runs under, so registration is opt-in.
+  // See PaseoToolHostDependencies.allowDaemonExecution.
+  const registerDaemonExecutionTool: typeof registerTool = (name, config, handler) => {
+    if (allowDaemonExecution !== true) {
+      return;
+    }
+    registerTool(name, config, handler);
+  };
+
   const toCatalog = (): PaseoToolCatalog => ({
     tools,
     getTool(name: string): PaseoToolDefinition | undefined {
@@ -2248,7 +2279,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerDaemonExecutionTool(
     "start_workspace_script",
     {
       title: "Start workspace script",
@@ -2349,7 +2380,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerDaemonExecutionTool(
     "create_terminal",
     {
       title: "Create terminal",
@@ -2388,7 +2419,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerDaemonExecutionTool(
     "kill_terminal",
     {
       title: "Kill terminal",
@@ -2419,7 +2450,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerDaemonExecutionTool(
     "capture_terminal",
     {
       title: "Capture terminal",
@@ -2463,7 +2494,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
     },
   );
 
-  registerTool(
+  registerDaemonExecutionTool(
     "send_terminal_keys",
     {
       title: "Send terminal keys",

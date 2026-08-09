@@ -32,6 +32,22 @@ export interface RelayHostConnection {
   relayEndpoint: string;
   useTls?: boolean;
   daemonPublicKeyB64: string;
+  /**
+   * Single-use token from the pairing offer this connection came from.
+   *
+   * Kept after enrollment because a first connection can fail after the token
+   * is spent or before it is; the daemon ignores it once this device's key is
+   * enrolled, so re-sending it is harmless and re-trying a failed pairing works.
+   */
+  enrollToken?: string;
+  /**
+   * Base64 secret key of this device's identity for this host.
+   *
+   * The daemon enrolls this key, so it has to survive across connections and be
+   * the same key the pairing probe used — otherwise enrollment binds a key the
+   * real connection never presents again.
+   */
+  clientSecretKeyB64?: string;
 }
 
 export type HostConnection =
@@ -104,6 +120,14 @@ export function resolveActiveHostServerId(params: {
   );
 }
 
+/**
+ * Whether two records point at the same daemon over the same route.
+ *
+ * This is an identity test, not a value test — it deliberately ignores the
+ * relay credentials, so a re-pair against a daemon you already have matches the
+ * stored record instead of piling up a second copy of it. Use
+ * {@link hostConnectionRecordEquals} to ask whether anything changed.
+ */
 function hostConnectionEquals(left: HostConnection, right: HostConnection): boolean {
   if (left.type !== right.type || left.id !== right.id) {
     return false;
@@ -133,6 +157,27 @@ function hostConnectionEquals(left: HostConnection, right: HostConnection): bool
   return false;
 }
 
+/**
+ * Identity, plus the credentials {@link hostConnectionEquals} ignores.
+ *
+ * Deliberately not a structural comparison. `hostConnectionEquals` treats an
+ * absent `useTls` as false and ignores key order, so a stored record and an
+ * equivalent freshly-built one can differ byte-for-byte while meaning the same
+ * thing. Comparing serialized form would call that "changed" on every upsert,
+ * rewriting the profile and its `updatedAt` forever.
+ */
+function hostConnectionRecordEquals(left: HostConnection, right: HostConnection): boolean {
+  if (!hostConnectionEquals(left, right)) {
+    return false;
+  }
+  if (left.type === "relay" && right.type === "relay") {
+    return (
+      left.enrollToken === right.enrollToken && left.clientSecretKeyB64 === right.clientSecretKeyB64
+    );
+  }
+  return true;
+}
+
 function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -140,10 +185,15 @@ function hostLifecycleEquals(left: HostLifecycle, right: HostLifecycle): boolean
 function dedupeHostConnections(connections: HostConnection[]): HostConnection[] {
   const next: HostConnection[] = [];
   for (const connection of connections) {
-    if (next.some((existing) => hostConnectionEquals(existing, connection))) {
+    const index = next.findIndex((existing) => hostConnectionEquals(existing, connection));
+    if (index === -1) {
+      next.push(connection);
       continue;
     }
-    next.push(connection);
+    // Later record wins, in place. Re-pairing carries a fresh enrollment token
+    // and client identity; keeping the first copy would pin the profile to a
+    // spent token and a key the daemon has revoked.
+    next[index] = connection;
   }
   return next;
 }
@@ -215,7 +265,7 @@ export function upsertHostConnectionInProfiles(input: {
     nextConnections.length !== prev.connections.length ||
     nextConnections.some((connection, index) => {
       const previousConnection = prev.connections[index];
-      return !previousConnection || !hostConnectionEquals(connection, previousConnection);
+      return !previousConnection || !hostConnectionRecordEquals(connection, previousConnection);
     });
 
   if (!changed) {
@@ -323,28 +373,34 @@ function normalizeStoredConnection(connection: unknown): HostConnection | null {
     return path ? { id: `pipe:${path}`, type: "directPipe", path } : null;
   }
   if (type === "relay") {
-    try {
-      const relayEndpoint = normalizeHostPort(
-        typeof record.relayEndpoint === "string" ? record.relayEndpoint : "",
-      );
-      const daemonPublicKeyB64 = (
-        typeof record.daemonPublicKeyB64 === "string" ? record.daemonPublicKeyB64 : ""
-      ).trim();
-      if (!daemonPublicKeyB64) return null;
-      const useTls = typeof record.useTls === "boolean" ? record.useTls : undefined;
-      return {
-        id: useTls === true ? `relay:wss:${relayEndpoint}` : `relay:${relayEndpoint}`,
-        type: "relay",
-        relayEndpoint,
-        ...(useTls !== undefined ? { useTls } : {}),
-        daemonPublicKeyB64,
-      };
-    } catch {
-      return null;
-    }
+    return normalizeStoredRelayConnection(record);
   }
 
   return null;
+}
+
+function normalizeStoredRelayConnection(record: Record<string, unknown>): HostConnection | null {
+  try {
+    const relayEndpoint = normalizeHostPort(
+      typeof record.relayEndpoint === "string" ? record.relayEndpoint : "",
+    );
+    const daemonPublicKeyB64 = (
+      typeof record.daemonPublicKeyB64 === "string" ? record.daemonPublicKeyB64 : ""
+    ).trim();
+    if (!daemonPublicKeyB64) return null;
+    const useTls = typeof record.useTls === "boolean" ? record.useTls : undefined;
+    const enrollToken = (typeof record.enrollToken === "string" ? record.enrollToken : "").trim();
+    return {
+      id: useTls === true ? `relay:wss:${relayEndpoint}` : `relay:${relayEndpoint}`,
+      type: "relay",
+      relayEndpoint,
+      ...(useTls !== undefined ? { useTls } : {}),
+      daemonPublicKeyB64,
+      ...(enrollToken ? { enrollToken } : {}),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeStoredHostProfile(entry: unknown): HostProfile | null {

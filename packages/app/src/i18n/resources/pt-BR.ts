@@ -2067,6 +2067,11 @@ export const ptBR: TranslationResources = {
         rowTitle: "Parear um dispositivo",
         rowHint: "Escaneie um QR code ou copie um link para conectar seu celular a este host",
       },
+      relay: {
+        title: "Relay",
+        hint: "Permite que dispositivos pareados alcancem este host de qualquer lugar. O daemon mantém uma conexão de saída com o relay enquanto isso estiver ativado. O tráfego continua criptografado de ponta a ponta; o relay vê apenas metadados de conexão.",
+        accessibilityLabel: "Conexão de relay",
+      },
       orchestration: {
         title: "Orquestração",
         unavailable: "Conecte-se a este host para gerenciar a orquestração",

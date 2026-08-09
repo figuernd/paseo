@@ -515,6 +515,10 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         e2ee: {
           enabled: true,
           daemonPublicKeyB64: connection.daemonPublicKeyB64,
+          ...(connection.enrollToken ? { enrollToken: connection.enrollToken } : {}),
+          ...(connection.clientSecretKeyB64
+            ? { clientSecretKeyB64: connection.clientSecretKeyB64 }
+            : {}),
         },
       });
     },
@@ -1717,6 +1721,8 @@ export class HostRuntimeStore {
     relayEndpoint: string;
     useTls?: boolean;
     daemonPublicKeyB64: string;
+    enrollToken?: string;
+    clientSecretKeyB64?: string;
     label?: string;
   }): Promise<HostProfile> {
     const relayEndpoint = normalizeHostPort(input.relayEndpoint);
@@ -1735,11 +1741,17 @@ export class HostRuntimeStore {
         relayEndpoint,
         ...(explicitUseTls ? { useTls } : {}),
         daemonPublicKeyB64,
+        ...(input.enrollToken ? { enrollToken: input.enrollToken } : {}),
+        ...(input.clientSecretKeyB64 ? { clientSecretKeyB64: input.clientSecretKeyB64 } : {}),
       },
     });
   }
 
-  async upsertConnectionFromOffer(offer: ConnectionOffer, label?: string): Promise<HostProfile> {
+  async upsertConnectionFromOffer(
+    offer: ConnectionOffer,
+    label?: string,
+    clientSecretKeyB64?: string,
+  ): Promise<HostProfile> {
     // COMPAT(oldRelayOfferTls): added in v0.1.73, remove after 2026-11-10.
     const useTls = offer.relay.useTls ?? shouldUseTlsForDefaultHostedRelay(offer.relay.endpoint);
     return this.upsertRelayConnection({
@@ -1747,6 +1759,8 @@ export class HostRuntimeStore {
       relayEndpoint: offer.relay.endpoint,
       useTls,
       daemonPublicKeyB64: offer.daemonPublicKeyB64,
+      enrollToken: offer.enroll,
+      ...(clientSecretKeyB64 ? { clientSecretKeyB64 } : {}),
       label,
     });
   }
@@ -1754,6 +1768,7 @@ export class HostRuntimeStore {
   async upsertConnectionFromOfferUrl(
     offerUrlOrFragment: string,
     label?: string,
+    clientSecretKeyB64?: string,
   ): Promise<HostProfile> {
     const marker = "#offer=";
     const idx = offerUrlOrFragment.indexOf(marker);
@@ -1766,7 +1781,7 @@ export class HostRuntimeStore {
     }
     const payload = decodeOfferFragmentPayload(encoded);
     const offer = ConnectionOfferSchema.parse(payload);
-    return this.upsertConnectionFromOffer(offer, label);
+    return this.upsertConnectionFromOffer(offer, label, clientSecretKeyB64);
   }
 
   async upsertConnectionFromListen(input: {
@@ -2451,6 +2466,7 @@ export interface HostMutations {
   upsertConnectionFromOfferUrl: (
     offerUrlOrFragment: string,
     label?: string,
+    clientSecretKeyB64?: string,
   ) => Promise<HostProfile>;
   renameHost: (serverId: string, label: string) => Promise<void>;
   setHostColor: (serverId: string, color: HostColor) => Promise<void>;
@@ -2467,7 +2483,8 @@ export function useHostMutations(): HostMutations {
       probeAndUpsertDirectConnection: (input) => store.probeAndUpsertDirectConnection(input),
       upsertRelayConnection: (input) => store.upsertRelayConnection(input),
       upsertConnectionFromOffer: (offer, label) => store.upsertConnectionFromOffer(offer, label),
-      upsertConnectionFromOfferUrl: (url, label) => store.upsertConnectionFromOfferUrl(url, label),
+      upsertConnectionFromOfferUrl: (url, label, clientSecretKeyB64) =>
+        store.upsertConnectionFromOfferUrl(url, label, clientSecretKeyB64),
       renameHost: (serverId, label) => store.renameHost(serverId, label),
       setHostColor: (serverId, color) => store.setHostColor(serverId, color),
       setHostBadgeDisplay: (serverId, badgeDisplay) =>

@@ -56,6 +56,8 @@ interface EncryptedChannelOptions {
 interface E2EEHelloMessage {
   type: "e2ee_hello";
   key: string;
+  /** Single-use token from a pairing offer, redeemed on first connection. */
+  enroll?: string;
   capabilities?: E2EECapabilities;
 }
 
@@ -86,8 +88,38 @@ function isE2EEHelloMessage(value: unknown): value is E2EEHelloMessage {
     value.type === "e2ee_hello" &&
     typeof value.key === "string" &&
     value.key.trim().length > 0 &&
+    (value.enroll === undefined || typeof value.enroll === "string") &&
     isE2EECapabilities(value.capabilities)
   );
+}
+
+/**
+ * Decides whether a client may open a session on this daemon.
+ *
+ * Possession of the daemon's public key is not sufficient: it is embedded in
+ * every pairing link, so treating it as the credential makes that link a
+ * permanent, unrevocable grant. The authorizer is what turns it into a
+ * one-time invitation.
+ */
+export type ClientAuthorizer = (input: {
+  clientPublicKeyB64: string;
+  enrollToken: string | undefined;
+}) => boolean | Promise<boolean>;
+
+/**
+ * Admits every client that completes the handshake.
+ *
+ * For tests that exercise the crypto rather than the pairing policy. A daemon
+ * must never use this — it restores the unrevocable-bearer-credential
+ * behaviour the authorizer exists to remove.
+ */
+export const ALLOW_ANY_CLIENT: ClientAuthorizer = () => true;
+
+export class ClientNotPairedError extends Error {
+  constructor() {
+    super("Client is not paired with this daemon");
+    this.name = "ClientNotPairedError";
+  }
 }
 
 function isE2EEReadyMessage(value: unknown): value is E2EEReadyMessage {
@@ -142,21 +174,38 @@ function hasUnref(timeout: unknown): timeout is TimeoutWithUnref {
   );
 }
 
+export interface ClientChannelOptions {
+  /** Single-use token from the pairing offer; the daemon ignores it once enrolled. */
+  enrollToken?: string;
+  /**
+   * The client's long-lived identity keypair.
+   *
+   * Enrollment binds the daemon's approval to this key, so it has to be the
+   * same one on every connection — a fresh keypair per channel would enroll
+   * once and then be refused, because the token it used is already spent.
+   * Generated per channel only when a caller has no identity to reuse, which
+   * in practice means tests.
+   */
+  keyPair?: KeyPair;
+}
+
 /**
  * Creates an encrypted channel as the initiator (client).
  *
  * The client:
- * 1. Receives daemon's public key via QR code
- * 2. Generates own keypair
- * 3. Sends e2ee_hello with own public key
+ * 1. Receives the daemon's public key and enrollment token via the pairing offer
+ * 2. Presents its identity keypair, generating one only if the caller has none
+ * 3. Sends e2ee_hello with its public key, plus the token until it is enrolled
  * 4. Derives shared key and starts encrypted communication
  */
 export async function createClientChannel(
   transport: Transport,
   daemonPublicKeyB64: string,
   events: EncryptedChannelEvents = {},
+  options: ClientChannelOptions = {},
 ): Promise<EncryptedChannel> {
-  const keyPair = generateKeyPair();
+  const enrollToken = options.enrollToken;
+  const keyPair = options.keyPair ?? generateKeyPair();
   const daemonPublicKey = importPublicKey(daemonPublicKeyB64);
   const sharedKey = deriveSharedKey(keyPair.secretKey, daemonPublicKey);
 
@@ -167,6 +216,10 @@ export async function createClientChannel(
   const hello: E2EEHelloMessage = {
     type: "e2ee_hello",
     key: ourPublicKeyB64,
+    // Sent on every hello, not just the first. The daemon ignores it once this
+    // key is enrolled, and reconnects after a restart still need it if the
+    // enrollment never completed.
+    ...(enrollToken ? { enroll: enrollToken } : {}),
     capabilities: { binaryCiphertext: true },
   };
   const helloText = JSON.stringify(hello);
@@ -227,6 +280,7 @@ export async function createClientChannel(
 export async function createDaemonChannel(
   transport: Transport,
   daemonKeyPair: KeyPair,
+  authorizeClient: ClientAuthorizer,
   events: EncryptedChannelEvents = {},
 ): Promise<EncryptedChannel> {
   return new Promise((resolve, reject) => {
@@ -262,14 +316,22 @@ export async function createDaemonChannel(
 
         const msg = parsed;
 
-        // Buffer any subsequent messages that arrive while we're doing async
-        // WebCrypto work to derive the shared key. Without this, it's possible
-        // for the next message (already encrypted) to be misinterpreted as a
-        // second hello, causing the handshake to fail.
+        // Buffer any subsequent messages that arrive while we do async work:
+        // authorizing the client, then deriving the shared key. This has to be
+        // installed before the first await — a client may pipeline encrypted
+        // traffic straight after hello, and leaving handleHello attached would
+        // misread that frame as a second hello.
         const bufferNext = (next: TransportMessage): void => {
           bufferedMessages.push(next);
         };
         Object.assign(transport, { onmessage: bufferNext });
+
+        // Authorize before deriving a key or answering. An unpaired client must
+        // learn nothing beyond "refused" — in particular it must not get an
+        // e2ee_ready it could use to probe further.
+        if (!(await authorizeClient({ clientPublicKeyB64: msg.key, enrollToken: msg.enroll }))) {
+          throw new ClientNotPairedError();
+        }
 
         const clientPublicKey = importPublicKey(msg.key);
         const sharedKey = deriveSharedKey(daemonKeyPair.secretKey, clientPublicKey);

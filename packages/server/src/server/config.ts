@@ -23,6 +23,7 @@ import { hashDaemonPassword } from "./auth.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
+import { relayEndpointDefaultsToTls } from "./relay-tls.js";
 
 const DEFAULT_PORT = 6767;
 const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
@@ -221,6 +222,30 @@ function resolveTlsFromEnv(
   return persistedValue ?? fallback;
 }
 
+function resolveRelayTls(
+  input: ResolveRelayInput,
+  endpoint: string,
+  publicEndpoint: string,
+): Pick<ResolvedRelay, "useTls" | "publicUseTls"> {
+  const useTls =
+    input.cliRelayUseTls ??
+    resolveTlsFromEnv(
+      input.env.PASEO_RELAY_USE_TLS,
+      input.persisted.daemon?.relay?.useTls,
+      relayEndpointDefaultsToTls(endpoint),
+    );
+  // Inheriting useTls is right only while both sides name the same host. Split
+  // endpoints (daemon dials a local relay, clients are told a public one) would
+  // otherwise carry a loopback-derived `false` onto a public hostname, and the
+  // pairing offer would advertise ws:// across the network.
+  const publicUseTls = resolveTlsFromEnv(
+    input.env.PASEO_RELAY_PUBLIC_USE_TLS,
+    input.persisted.daemon?.relay?.publicUseTls,
+    publicEndpoint === endpoint ? useTls : relayEndpointDefaultsToTls(publicEndpoint),
+  );
+  return { useTls, publicUseTls };
+}
+
 function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
   const environmentEnabled = parseBooleanEnv(input.env.PASEO_RELAY_ENABLED);
   // COMPAT(relayOptInDefault): configs created before v0.2.6 may omit this field.
@@ -235,18 +260,7 @@ function resolveRelayConfig(input: ResolveRelayInput): ResolvedRelay {
     input.env.PASEO_RELAY_PUBLIC_ENDPOINT ??
     input.persisted.daemon?.relay?.publicEndpoint ??
     endpoint;
-  const useTls =
-    input.cliRelayUseTls ??
-    resolveTlsFromEnv(
-      input.env.PASEO_RELAY_USE_TLS,
-      input.persisted.daemon?.relay?.useTls,
-      endpoint === DEFAULT_RELAY_ENDPOINT,
-    );
-  const publicUseTls = resolveTlsFromEnv(
-    input.env.PASEO_RELAY_PUBLIC_USE_TLS,
-    input.persisted.daemon?.relay?.publicUseTls,
-    useTls,
-  );
+  const { useTls, publicUseTls } = resolveRelayTls(input, endpoint, publicEndpoint);
   return {
     enabled,
     enabledMutable: input.cliRelayEnabled === undefined && environmentEnabled === undefined,
@@ -438,6 +452,18 @@ function resolveBrowserToolsEnabled(persisted: ReturnType<typeof loadPersistedCo
   return persisted.daemon?.browserTools?.enabled ?? false;
 }
 
+function resolvePushIncludeContent(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
+  return persisted.daemon?.push?.includeContent ?? false;
+}
+
+function resolveMcpAuthToken(env: NodeJS.ProcessEnv): string | undefined {
+  return env.PASEO_MCP_AUTH_TOKEN?.trim() || undefined;
+}
+
+function resolveAllowDaemonExecution(persisted: ReturnType<typeof loadPersistedConfig>): boolean {
+  return persisted.daemon?.mcp?.allowDaemonExecution ?? false;
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -445,9 +471,12 @@ function resolveStaticLoadConfigSettings(
 ) {
   return {
     mcpEnabled: cli?.mcpEnabled ?? persisted.daemon?.mcp?.enabled ?? true,
+    mcpAuthToken: resolveMcpAuthToken(env),
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
+    pushIncludeContent: resolvePushIncludeContent(persisted),
+    allowDaemonExecution: resolveAllowDaemonExecution(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -474,8 +503,11 @@ export function loadConfig(
   const listen = resolveListenAddress(env, options?.cli, persisted);
   const {
     mcpEnabled,
+    mcpAuthToken,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    pushIncludeContent,
+    allowDaemonExecution,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -513,8 +545,11 @@ export function loadConfig(
     hostnames,
     trustedProxies,
     mcpEnabled,
+    mcpAuthToken,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    pushIncludeContent,
+    allowDaemonExecution,
     git: resolveGitProcessConfig(env, persisted),
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,

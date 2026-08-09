@@ -157,17 +157,20 @@ export function shouldBypassBearerAuth(method: string, path: string): boolean {
  * from the global daemon-password middleware. Accepts either the per-daemon-run
  * capability token the daemon injects into its own agents' configs and MCP
  * client, or a valid daemon-password bearer (so existing password-authenticated
- * callers keep working). When no daemon password is configured the endpoint is
- * open, matching the global middleware's behavior.
+ * callers keep working).
+ *
+ * The capability token is required even when no daemon password is configured,
+ * which is the default. This route serves the full Paseo tool catalog —
+ * including terminal creation — so leaving it open to anything that can reach
+ * the daemon socket makes it an unauthenticated execution surface, and a remote
+ * one the moment the daemon is bound past loopback. The daemon injects the token
+ * into every agent it spawns, so requiring it costs legitimate callers nothing.
  */
 export async function isAgentMcpRequestAuthorized(input: {
   password: string | undefined;
   capabilityToken: string | null;
   authorizationHeader: string | undefined;
 }): Promise<boolean> {
-  if (!input.password) {
-    return true;
-  }
   const token = extractHttpBearerToken(input.authorizationHeader);
   if (input.capabilityToken !== null && token !== null) {
     // Constant-time compare; length-guard first because timingSafeEqual throws
@@ -177,6 +180,11 @@ export async function isAgentMcpRequestAuthorized(input: {
     if (provided.length === expected.length && timingSafeEqual(provided, expected)) {
       return true;
     }
+  }
+  // Without a password there is no second credential to fall back to, and
+  // isBearerTokenValidAsync treats an absent password as "no auth required".
+  if (!input.password) {
+    return false;
   }
   return isBearerTokenValidAsync({ password: input.password, token });
 }

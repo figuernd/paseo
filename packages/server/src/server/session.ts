@@ -2019,6 +2019,12 @@ export class Session {
         return this.daemonSession.handleGetStatusRequest(msg);
       case "daemon.get_pairing_offer.request":
         return this.daemonSession.handleGetPairingOfferRequest(msg);
+      case "daemon.clients.list.request":
+        this.daemonSession.handleClientsListRequest(msg);
+        return undefined;
+      case "daemon.clients.revoke.request":
+        this.daemonSession.handleClientsRevokeRequest(msg);
+        return undefined;
       case "hub.management.daemon.connect.request":
       case "hub.management.daemon.get_status.request":
       case "hub.management.daemon.disconnect.request":

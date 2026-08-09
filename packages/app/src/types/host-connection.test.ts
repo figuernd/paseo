@@ -175,6 +175,65 @@ describe("upsertHostConnectionInProfiles", () => {
 
     expect(profile.appearance).toEqual({ color: "amber", badgeDisplay: "hidden" });
   });
+
+  it("replaces the stored relay credentials when the host is paired again", () => {
+    // Re-pairing after a revocation is the whole reason to pair twice. The two
+    // records are the same route, so the identity test matches — but the new
+    // token and client key have to win, or the app keeps presenting a spent
+    // token and a revoked key and can never get back in.
+    const paired: HostConnection = {
+      id: "relay:relay.paseo.sh",
+      type: "relay",
+      relayEndpoint: "relay.paseo.sh",
+      useTls: true,
+      daemonPublicKeyB64: "daemon-key",
+      enrollToken: "spent-token",
+      clientSecretKeyB64: "revoked-client-key",
+    };
+    const existing: HostProfile = { ...makeHost("srv_known"), connections: [paired] };
+
+    const [profile] = upsertHostConnectionInProfiles({
+      profiles: [existing],
+      serverId: "srv_known",
+      connection: {
+        ...paired,
+        enrollToken: "fresh-token",
+        clientSecretKeyB64: "fresh-client-key",
+      },
+    });
+
+    expect(profile.connections).toHaveLength(1);
+    expect(profile.connections[0]).toMatchObject({
+      enrollToken: "fresh-token",
+      clientSecretKeyB64: "fresh-client-key",
+    });
+  });
+
+  it("reports no change when the same host reconnects", () => {
+    // Change detection has to tolerate the normalization the identity test
+    // already does — an absent useTls means false. Comparing serialized records
+    // instead would rewrite the profile and bump updatedAt on every reconnect.
+    const stored: HostConnection = {
+      id: "direct:localhost:6767",
+      type: "directTcp",
+      endpoint: "localhost:6767",
+      useTls: false,
+    };
+    const existing: HostProfile = {
+      ...makeHost("srv_known"),
+      connections: [stored],
+      preferredConnectionId: stored.id,
+    };
+    const profiles = [existing];
+
+    expect(
+      upsertHostConnectionInProfiles({
+        profiles,
+        serverId: "srv_known",
+        connection: { id: stored.id, type: "directTcp", endpoint: "localhost:6767" },
+      }),
+    ).toBe(profiles);
+  });
 });
 
 describe("resolveActiveHostServerId", () => {

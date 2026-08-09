@@ -60,6 +60,7 @@ import {
 } from "./agent-attention-policy.js";
 import {
   buildAgentAttentionNotificationPayload,
+  redactAgentAttentionNotificationContent,
   findLatestPermissionRequest,
 } from "@getpaseo/protocol/agent-attention-notification";
 import { createGitHubService } from "../services/github-service.js";
@@ -133,6 +134,8 @@ interface WebSocketServerConfig {
   hostnames?: HostnamesConfig;
   daemonStatusRpc?: boolean;
   relayConfig?: boolean;
+  /** See PaseoDaemonConfig.pushIncludeContent. Defaults to false. */
+  pushIncludeContent?: boolean;
 }
 
 type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
@@ -559,6 +562,7 @@ export class VoiceAssistantWebSocketServer {
   private acceptingConnections = true;
   private readonly advertiseDaemonStatusRpc: boolean;
   private readonly advertiseRelayConfig: boolean;
+  private readonly pushIncludeContent: boolean;
 
   constructor(
     server: HTTPServer,
@@ -608,6 +612,7 @@ export class VoiceAssistantWebSocketServer {
     this.logger = logger.child({ module: "websocket-server" });
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
     this.advertiseRelayConfig = wsConfig.relayConfig !== false;
+    this.pushIncludeContent = wsConfig.pushIncludeContent === true;
     this.serverId = serverId;
     if (typeof daemonVersion !== "string" || daemonVersion.trim().length === 0) {
       throw new MissingDaemonVersionError();
@@ -2375,7 +2380,12 @@ export class VoiceAssistantWebSocketServer {
     });
 
     if (plan.shouldPush) {
-      void this.pushNotificationSender.send(notification).catch((err) => {
+      // The WebSocket copy below keeps its preview: it reaches trusted clients
+      // inside the E2E-encrypted channel. This copy goes to Expo in plaintext.
+      const pushPayload = this.pushIncludeContent
+        ? notification
+        : redactAgentAttentionNotificationContent(notification);
+      void this.pushNotificationSender.send(pushPayload).catch((err) => {
         this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
       });
     }
@@ -2462,7 +2472,9 @@ export class VoiceAssistantWebSocketServer {
           data: {
             serverId: this.serverId,
             terminalId: params.terminalId,
-            cwd: params.cwd,
+            // No cwd: notification routing keys off the IDs alone
+            // (notification-routing.ts), and an absolute path is not something
+            // to hand to Expo for a field nothing reads.
             ...(workspaceId ? { workspaceId } : {}),
           },
         })

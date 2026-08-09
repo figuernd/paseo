@@ -193,6 +193,25 @@ function resolveAgentAttentionFallbackBody(reason: AgentAttentionReason): string
   return "Finished working.";
 }
 
+/**
+ * Strips the message preview from a notification, keeping its title and routing
+ * data.
+ *
+ * Notifications delivered over the WebSocket reach trusted clients inside the
+ * E2E-encrypted channel, so those keep their preview. Push notifications leave
+ * the machine in plaintext to Expo and then Apple/Google, and the preview can
+ * carry assistant output or a permission request's raw tool input. Redact that
+ * copy unless the operator has opted in.
+ */
+export function redactAgentAttentionNotificationContent(
+  payload: AgentAttentionNotificationPayload,
+): AgentAttentionNotificationPayload {
+  return {
+    ...payload,
+    body: resolveAgentAttentionFallbackBody(payload.data.reason),
+  };
+}
+
 export function buildAgentAttentionNotificationPayload(
   input: BuildAgentAttentionNotificationPayloadInput,
 ): AgentAttentionNotificationPayload {

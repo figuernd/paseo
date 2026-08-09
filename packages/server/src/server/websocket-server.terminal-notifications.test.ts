@@ -472,7 +472,10 @@ describe("VoiceAssistantWebSocketServer terminal attention notifications", () =>
 
     expect(pushNotifications.sent).toHaveLength(1);
     expect(pushNotifications.sent[0]?.title).toBe("Terminal finished");
-    expect(pushNotifications.sent[0]?.data).toMatchObject({
+    // Exact, not toMatchObject: the push copy goes to Expo in plaintext, so the
+    // absence of cwd is the assertion that matters. The WebSocket payload still
+    // carries it for trusted clients.
+    expect(pushNotifications.sent[0]?.data).toEqual({
       serverId: "srv-test",
       terminalId: "term-1",
       workspaceId: "ws-1",

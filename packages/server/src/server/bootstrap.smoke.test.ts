@@ -444,10 +444,15 @@ describe("paseo daemon bootstrap", () => {
     });
 
     try {
+      // The request has to authenticate, or it is rejected before the debug
+      // logger runs and there is nothing to assert redaction against. The
+      // capability token is also the more interesting secret to redact: it is a
+      // live credential, where the old placeholder never authenticated anything.
+      const mcpAuthToken = daemonHandle.daemon.agentManager.getMcpAuthToken();
       const response = await fetch(`http://127.0.0.1:${daemonHandle.port}/mcp/agents`, {
         method: "POST",
         headers: {
-          Authorization: "Bearer secret-debug-token",
+          Authorization: `Bearer ${mcpAuthToken}`,
           Accept: "application/json, text/event-stream",
           "Content-Type": "application/json",
         },
@@ -467,7 +472,7 @@ describe("paseo daemon bootstrap", () => {
       expect(logs).toContain("[redacted]");
       expect(logs).toContain('"method":"tools/call"');
       expect(logs).toContain('"hasParams":true');
-      expect(logs).not.toContain("secret-debug-token");
+      expect(logs).not.toContain(mcpAuthToken);
       expect(logs).not.toContain("secret-body-token");
       expect(logs).not.toContain("apiKey");
     } finally {

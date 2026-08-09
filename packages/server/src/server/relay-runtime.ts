@@ -1,5 +1,5 @@
 import type pino from "pino";
-import type { KeyPair } from "@getpaseo/relay/e2ee";
+import type { ClientAuthorizer, KeyPair } from "@getpaseo/relay/e2ee";
 import type { ExternalSocketMetadata } from "./websocket-server.js";
 import {
   startRelayTransport,
@@ -21,12 +21,15 @@ interface RelayRuntimeOptions {
   attachSocket(ws: RelaySocketLike, metadata?: ExternalSocketMetadata): Promise<void>;
   serverId: string;
   daemonKeyPair: KeyPair;
+  authorizeClient: ClientAuthorizer;
   startTransport?: typeof startRelayTransport;
 }
 
 export interface RelayRuntime {
   getConfig(): RelayRuntimeConfig;
   setEnabled(enabled: boolean): void;
+  /** Closes live sessions for a revoked client. No-op while relay is off. */
+  closeClientSessions(clientPublicKeyB64: string): number;
   stop(): Promise<void>;
 }
 
@@ -44,6 +47,7 @@ export function createRelayRuntime(options: RelayRuntimeOptions): RelayRuntime {
       relayUseTls: config.useTls,
       serverId: options.serverId,
       daemonKeyPair: options.daemonKeyPair,
+      authorizeClient: options.authorizeClient,
     });
   }
 
@@ -73,6 +77,8 @@ export function createRelayRuntime(options: RelayRuntimeOptions): RelayRuntime {
   return {
     getConfig: () => config,
     setEnabled,
+    closeClientSessions: (clientPublicKeyB64) =>
+      transport?.closeClientSessions(clientPublicKeyB64) ?? 0,
     stop,
   };
 }

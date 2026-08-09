@@ -164,6 +164,7 @@ import type { TerminalManager } from "../terminal/terminal-manager.js";
 import { createConfiguredTerminalManager } from "../terminal/terminal-manager-factory.js";
 import { applyTerminalAgentHookSetting } from "../terminal/agent-hooks/terminal-agent-hook-setting.js";
 import { loadOrCreateDaemonKeyPair } from "./daemon-keypair.js";
+import { PairedClientStore } from "./paired-clients.js";
 import { createRelayRuntime, type RelayRuntime } from "./relay-runtime.js";
 import type { PushNotificationSender } from "./push/notifications.js";
 import { getOrCreateServerId } from "./server-id.js";
@@ -189,6 +190,7 @@ import {
 } from "./managed-processes/managed-processes.js";
 import { terminateWithTreeKill } from "../utils/tree-kill.js";
 import { isHostnameAllowed, type HostnamesConfig } from "./hostnames.js";
+import { relayEndpointDefaultsToTls } from "./relay-tls.js";
 import {
   createRequireBearerMiddleware,
   isAgentMcpRequestAuthorized,
@@ -389,7 +391,28 @@ export interface PaseoDaemonConfig {
   trustedProxies?: true | string[];
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
+  /**
+   * Pins the Agent MCP capability token instead of minting a random one per
+   * daemon run. Set via PASEO_MCP_AUTH_TOKEN.
+   *
+   * Only needed when something outside the daemon process has to call
+   * /mcp/agents — an out-of-process test harness, or an operator driving their
+   * own MCP client. In-process callers read it from
+   * `agentManager.getMcpAuthToken()` instead. A pinned token outlives the
+   * process, so it is strictly weaker than the default; leave it unset unless
+   * you need it.
+   */
+  mcpAuthToken?: string;
   browserToolsEnabled?: boolean;
+  /**
+   * Include the agent's message preview in push notifications. Off by default:
+   * push leaves the machine in plaintext to Expo and then Apple/Google, outside
+   * the relay's E2E encryption. Notifications delivered over the WebSocket keep
+   * their preview either way.
+   */
+  pushIncludeContent?: boolean;
+  /** See PaseoToolHostDependencies.allowDaemonExecution. Off by default. */
+  allowDaemonExecution?: boolean;
   git?: {
     maxProcessesPerSecond: number;
     maxProcessConcurrency: number;
@@ -561,6 +584,7 @@ export async function createPaseoDaemon(
 
   const serverId = getOrCreateServerId(config.paseoHome, { logger });
   const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
+  const pairedClients = new PairedClientStore(config.paseoHome, logger);
   const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.
@@ -583,8 +607,9 @@ export async function createPaseoDaemon(
   // clients — so it cannot be replayed off-box. This lets the injected MCP
   // authenticate even when the daemon password is set via the app (hash only,
   // no plaintext available). Mirrors the /api/files/download capability-token
-  // pattern.
-  const agentMcpAuthToken = randomUUID();
+  // pattern. Required on every /mcp/agents request, including when no daemon
+  // password is configured — see isAgentMcpRequestAuthorized.
+  const agentMcpAuthToken = config.mcpAuthToken ?? randomUUID();
 
   const listenTarget = parseListenString(config.listen);
 
@@ -1243,6 +1268,7 @@ export async function createPaseoDaemon(
     agentManager,
     agentStorage,
     terminalManager,
+    allowDaemonExecution: config.allowDaemonExecution === true,
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
     providerSnapshotManager,
@@ -1474,8 +1500,14 @@ export async function createPaseoDaemon(
             const relayEnabled = config.relayEnabled ?? true;
             const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.paseo.sh:443";
+            const relayUseTls = config.relayUseTls ?? relayEndpointDefaultsToTls(relayEndpoint);
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
+            if (relayEnabled && !relayUseTls && relayEndpointDefaultsToTls(relayEndpoint)) {
+              logger.warn(
+                { relayEndpoint },
+                "Relay connection is not using TLS. The E2EE handshake and all connection metadata will cross the network in the clear. Set daemon.relay.useTls unless this is intentional.",
+              );
+            }
             if (boundListenTarget.type === "tcp") {
               logger.info(
                 {
@@ -1515,6 +1547,7 @@ export async function createPaseoDaemon(
                 hostnames: configuredHostnames,
                 daemonStatusRpc: dependencies.serverFeatureOverrides?.daemonStatusRpc,
                 relayConfig: dependencies.serverFeatureOverrides?.relayConfig,
+                pushIncludeContent: config.pushIncludeContent === true,
               },
               workspaceAutoName,
               config.auth,
@@ -1560,6 +1593,34 @@ export async function createPaseoDaemon(
                     useTls: relayUseTls,
                     publicUseTls: relayPublicUseTls,
                   },
+                listPairedClients: () =>
+                  pairedClients.list().map((client) => ({
+                    fingerprint: client.fingerprint,
+                    label: client.label,
+                    addedAt: client.addedAt,
+                    lastSeenAt: client.lastSeenAt,
+                  })),
+                revokePairedClients: (fingerprint) => {
+                  const removed =
+                    fingerprint === "all"
+                      ? pairedClients.revokeAll()
+                      : [pairedClients.revoke(fingerprint)].filter((c) => c !== null);
+                  // Dropping the key only stops the next handshake; a revoked
+                  // device holding an open session keeps it until it reconnects.
+                  let sessionsClosed = 0;
+                  for (const client of removed) {
+                    sessionsClosed += relayRuntime?.closeClientSessions(client.publicKeyB64) ?? 0;
+                  }
+                  return {
+                    revoked: removed.map((client) => ({
+                      fingerprint: client.fingerprint,
+                      label: client.label,
+                      addedAt: client.addedAt,
+                      lastSeenAt: client.lastSeenAt,
+                    })),
+                    sessionsClosed,
+                  };
+                },
               },
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
@@ -1580,6 +1641,20 @@ export async function createPaseoDaemon(
               },
               serverId,
               daemonKeyPair: daemonKeyPair.keyPair,
+              authorizeClient: ({ clientPublicKeyB64, enrollToken }) => {
+                const result = pairedClients.authorize({
+                  publicKeyB64: clientPublicKeyB64,
+                  enrollToken,
+                });
+                if (result.outcome === "rejected") {
+                  logger.warn(
+                    { reason: result.reason },
+                    "Refused a relay client that is not paired with this daemon",
+                  );
+                  return false;
+                }
+                return true;
+              },
             });
             daemonConfigStore.onFieldChange("relay.enabled", (value) => {
               relayRuntime?.setEnabled(value === true);

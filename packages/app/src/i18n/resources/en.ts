@@ -2044,6 +2044,11 @@ export const en = {
         rowTitle: "Pair a device",
         rowHint: "Scan a QR code or copy a link to connect your phone to this host",
       },
+      relay: {
+        title: "Relay",
+        hint: "Lets paired devices reach this host from anywhere. The daemon keeps an outbound connection to the relay while this is on. Traffic stays end-to-end encrypted; the relay sees only connection metadata.",
+        accessibilityLabel: "Relay connection",
+      },
       orchestration: {
         title: "Orchestration",
         unavailable: "Connect to this host to manage orchestration",

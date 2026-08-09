@@ -84,6 +84,7 @@ import type {
   ProviderUsageListResponseMessage,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
+  PairedClientSummary,
   DiagnosticsResponse,
   AgentRewindResponseMessage,
   ListTerminalsResponse,
@@ -309,6 +310,16 @@ export interface DaemonClientConfig {
   e2ee?: {
     enabled?: boolean;
     daemonPublicKeyB64?: string;
+    /** Single-use token from the pairing offer. Required until this client is enrolled. */
+    enrollToken?: string;
+    /**
+     * Base64 secret key of this client's persisted identity.
+     *
+     * Enrollment binds the daemon's approval to this key, so it must be stable
+     * across connections. Omitting it means a fresh key per connection, which
+     * an enrolling daemon will refuse after the first.
+     */
+    clientSecretKeyB64?: string;
   };
   reconnect?: {
     enabled?: boolean;
@@ -1235,6 +1246,22 @@ export class DaemonClient {
     return this.connectPromise;
   }
 
+  private createRelayE2eeFactory(baseFactory: DaemonTransportFactory): DaemonTransportFactory {
+    const daemonPublicKeyB64 = this.config.e2ee?.daemonPublicKeyB64;
+    if (!daemonPublicKeyB64) {
+      throw new Error("daemonPublicKeyB64 is required for relay E2EE");
+    }
+    const enrollToken = this.config.e2ee?.enrollToken;
+    const clientSecretKeyB64 = this.config.e2ee?.clientSecretKeyB64;
+    return createRelayE2eeTransportFactory({
+      baseFactory,
+      daemonPublicKeyB64,
+      ...(enrollToken ? { enrollToken } : {}),
+      ...(clientSecretKeyB64 ? { clientSecretKeyB64 } : {}),
+      logger: this.logger,
+    });
+  }
+
   private attemptConnect(): void {
     if (this.connectionState.status === "disposed") {
       this.rejectConnect(new Error("Daemon client is disposed"));
@@ -1268,18 +1295,9 @@ export class DaemonClient {
       const shouldUseRelayE2ee =
         this.config.e2ee?.enabled === true && isRelayClientWebSocketUrl(this.config.url);
 
-      let transportFactory = baseTransportFactory;
-      if (shouldUseRelayE2ee) {
-        const daemonPublicKeyB64 = this.config.e2ee?.daemonPublicKeyB64;
-        if (!daemonPublicKeyB64) {
-          throw new Error("daemonPublicKeyB64 is required for relay E2EE");
-        }
-        transportFactory = createRelayE2eeTransportFactory({
-          baseFactory: baseTransportFactory,
-          daemonPublicKeyB64,
-          logger: this.logger,
-        });
-      }
+      const transportFactory = shouldUseRelayE2ee
+        ? this.createRelayE2eeFactory(baseTransportFactory)
+        : baseTransportFactory;
       const transportUrl = this.resolveTransportUrlForAttempt();
       const transport = transportFactory({
         url: transportUrl,
@@ -4557,6 +4575,31 @@ export class DaemonClient {
       requestId,
       message: { type: "hub.management.daemon.disconnect.request", force },
       responseType: "hub.management.daemon.disconnect.response",
+    });
+  }
+
+  async listPairedClients(options?: {
+    requestId?: string;
+    timeout?: number;
+  }): Promise<{ requestId: string; clients: PairedClientSummary[] }> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: { type: "daemon.clients.list.request" },
+      responseType: "daemon.clients.list.response",
+      timeout: options?.timeout,
+    });
+  }
+
+  /** Pass "all" to revoke every client, as key rotation does. */
+  async revokePairedClients(
+    fingerprint: string,
+    options?: { requestId?: string; timeout?: number },
+  ): Promise<{ requestId: string; revoked: PairedClientSummary[]; sessionsClosed: number }> {
+    return this.sendCorrelatedSessionRequest({
+      requestId: options?.requestId,
+      message: { type: "daemon.clients.revoke.request", fingerprint },
+      responseType: "daemon.clients.revoke.response",
+      timeout: options?.timeout,
     });
   }
 

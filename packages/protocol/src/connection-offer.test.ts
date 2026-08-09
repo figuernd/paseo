@@ -33,11 +33,27 @@ describe("connection offer", () => {
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
+      enroll: "enroll-token",
       relay: { endpoint: "relay.paseo.sh:443" },
     });
     const encoded = encodeBase64UrlNoPadUtf8(JSON.stringify(offer));
 
     expect(parseConnectionOfferFromUrl(`https://app.paseo.sh/#offer=${encoded}`)).toEqual(offer);
+  });
+
+  it("rejects an offer with no enrollment token", () => {
+    // The daemon public key is in every offer, so it is not a credential. The
+    // token is what makes an offer a one-time invitation, and a daemon that
+    // enrolls will refuse a handshake without one — so failing at parse time is
+    // where the error is legible, rather than after the user has saved a host.
+    expect(() =>
+      ConnectionOfferSchema.parse({
+        v: 2,
+        serverId: "server-123",
+        daemonPublicKeyB64: "pubkey",
+        relay: { endpoint: "relay.paseo.sh:443" },
+      }),
+    ).toThrow();
   });
 
   it("leaves relay TLS unset when absent", () => {
@@ -46,12 +62,14 @@ describe("connection offer", () => {
         v: 2,
         serverId: "server-123",
         daemonPublicKeyB64: "pubkey",
+        enroll: "enroll-token",
         relay: { endpoint: "relay.example.com:80" },
       }),
     ).toEqual({
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
+      enroll: "enroll-token",
       relay: { endpoint: "relay.example.com:80" },
     });
   });
@@ -61,6 +79,7 @@ describe("connection offer", () => {
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
+      enroll: "enroll-token",
       relay: { endpoint: "relay.example.com:443", useTls: true, extra: "future" },
     });
     const encoded = encodeBase64UrlNoPadUtf8(JSON.stringify(offer));
@@ -69,6 +88,7 @@ describe("connection offer", () => {
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
+      enroll: "enroll-token",
       relay: { endpoint: "relay.example.com:443", useTls: true },
     });
   });

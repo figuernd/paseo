@@ -1197,6 +1197,18 @@ export const DaemonGetPairingOfferRequestSchema = z.object({
   requestId: z.string(),
 });
 
+export const DaemonClientsListRequestSchema = z.object({
+  type: z.literal("daemon.clients.list.request"),
+  requestId: z.string(),
+});
+
+export const DaemonClientsRevokeRequestSchema = z.object({
+  type: z.literal("daemon.clients.revoke.request"),
+  requestId: z.string(),
+  /** Fingerprint from daemon.clients.list, or "all" to revoke every client. */
+  fingerprint: z.string(),
+});
+
 export const HubManagementDaemonConnectRequestSchema = z.object({
   type: z.literal("hub.management.daemon.connect.request"),
   requestId: z.string(),
@@ -2555,6 +2567,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   WaitForFinishRequestSchema,
   DaemonGetStatusRequestSchema,
   DaemonGetPairingOfferRequestSchema,
+  DaemonClientsListRequestSchema,
+  DaemonClientsRevokeRequestSchema,
   HubManagementDaemonConnectRequestSchema,
   HubManagementDaemonGetStatusRequestSchema,
   HubManagementDaemonDisconnectRequestSchema,
@@ -3957,6 +3971,38 @@ export const DaemonGetPairingOfferResponseSchema = z.object({
       url: z.string(),
       qr: z.string().nullable().optional(),
       relayEnabled: z.boolean(),
+    })
+    .passthrough(),
+});
+
+export const PairedClientSummarySchema = z
+  .object({
+    fingerprint: z.string(),
+    label: z.string().nullable().optional(),
+    addedAt: z.string(),
+    lastSeenAt: z.string().nullable().optional(),
+    connected: z.boolean().optional(),
+  })
+  .passthrough();
+
+export const DaemonClientsListResponseSchema = z.object({
+  type: z.literal("daemon.clients.list.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      clients: z.array(PairedClientSummarySchema),
+    })
+    .passthrough(),
+});
+
+export const DaemonClientsRevokeResponseSchema = z.object({
+  type: z.literal("daemon.clients.revoke.response"),
+  payload: z
+    .object({
+      requestId: z.string(),
+      revoked: z.array(PairedClientSummarySchema),
+      /** Live sessions closed as part of the revocation. */
+      sessionsClosed: z.number(),
     })
     .passthrough(),
 });
@@ -5399,6 +5445,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetVoiceModeResponseMessageSchema,
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
+  DaemonClientsListResponseSchema,
+  DaemonClientsRevokeResponseSchema,
   HubManagementDaemonConnectResponseSchema,
   HubManagementDaemonGetStatusResponseSchema,
   HubManagementDaemonDisconnectResponseSchema,
@@ -5639,6 +5687,9 @@ export type ListProviderFeaturesResponseMessage = z.infer<
 export type ListAvailableProvidersResponse = z.infer<typeof ListAvailableProvidersResponseSchema>;
 export type DaemonGetStatusResponse = z.infer<typeof DaemonGetStatusResponseSchema>;
 export type DaemonGetPairingOfferResponse = z.infer<typeof DaemonGetPairingOfferResponseSchema>;
+export type DaemonClientsListResponse = z.infer<typeof DaemonClientsListResponseSchema>;
+export type DaemonClientsRevokeResponse = z.infer<typeof DaemonClientsRevokeResponseSchema>;
+export type PairedClientSummary = z.infer<typeof PairedClientSummarySchema>;
 export type DiagnosticsResponse = z.infer<typeof DiagnosticsResponseSchema>;
 export type GetProvidersSnapshotResponseMessage = z.infer<
   typeof GetProvidersSnapshotResponseMessageSchema

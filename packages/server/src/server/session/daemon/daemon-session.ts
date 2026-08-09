@@ -24,6 +24,26 @@ export interface DaemonRuntimeConfig {
     useTls: boolean;
     publicUseTls: boolean;
   } | null;
+  /** Paired-client management. Absent on daemons built without relay support. */
+  listPairedClients?(): Array<{
+    fingerprint: string;
+    label: string | null;
+    addedAt: string;
+    lastSeenAt: string | null;
+  }>;
+  /**
+   * Revokes one fingerprint, or every client when given "all", and closes the
+   * live sessions belonging to whatever was removed.
+   */
+  revokePairedClients?(fingerprint: string): {
+    revoked: Array<{
+      fingerprint: string;
+      label: string | null;
+      addedAt: string;
+      lastSeenAt: string | null;
+    }>;
+    sessionsClosed: number;
+  };
 }
 
 export interface DaemonSessionHost {
@@ -228,6 +248,42 @@ export class DaemonSession {
         },
       });
     }
+  }
+
+  handleClientsListRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.clients.list.request" }>,
+  ): void {
+    const clients = this.daemonRuntimeConfig?.listPairedClients?.() ?? [];
+    this.host.emit({
+      type: "daemon.clients.list.response",
+      payload: { requestId: msg.requestId, clients },
+    });
+  }
+
+  handleClientsRevokeRequest(
+    msg: Extract<SessionInboundMessage, { type: "daemon.clients.revoke.request" }>,
+  ): void {
+    const revoke = this.daemonRuntimeConfig?.revokePairedClients;
+    if (!revoke) {
+      this.host.emit({
+        type: "rpc_error",
+        payload: {
+          requestId: msg.requestId,
+          requestType: "daemon.clients.revoke.request",
+          error: "This daemon does not manage paired clients",
+        },
+      });
+      return;
+    }
+    const result = revoke(msg.fingerprint);
+    this.host.emit({
+      type: "daemon.clients.revoke.response",
+      payload: {
+        requestId: msg.requestId,
+        revoked: result.revoked,
+        sessionsClosed: result.sessionsClosed,
+      },
+    });
   }
 
   async handleDiagnosticsRequest(

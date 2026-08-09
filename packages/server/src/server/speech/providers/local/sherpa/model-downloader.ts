@@ -1,4 +1,5 @@
-import { createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
+import { createHash } from "node:crypto";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -68,10 +69,54 @@ async function downloadToFile(options: DownloadToFileOptions): Promise<void> {
   }
 }
 
-async function extractTarArchive(archivePath: string, destDir: string): Promise<void> {
+export class ModelArchiveIntegrityError extends Error {
+  constructor(
+    readonly archivePath: string,
+    readonly expectedSha256: string,
+    readonly actualSha256: string,
+  ) {
+    super(
+      `Model archive ${path.basename(archivePath)} failed integrity check. ` +
+        `Expected sha256 ${expectedSha256}, got ${actualSha256}. ` +
+        `The download was discarded and the model was not extracted.`,
+    );
+    this.name = "ModelArchiveIntegrityError";
+  }
+}
+
+async function computeFileSha256(filePath: string): Promise<string> {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(filePath), hash);
+  return hash.digest("hex");
+}
+
+/**
+ * Verifies the archive against its pinned digest before anything unpacks it.
+ *
+ * On mismatch the file is removed rather than left behind: a partial or
+ * substituted download that stays on disk would be picked up by the
+ * isNonEmptyFile short-circuit on the next run and never re-fetched.
+ */
+async function verifyArchiveIntegrity(archivePath: string, expectedSha256: string): Promise<void> {
+  const actual = await computeFileSha256(archivePath);
+  if (actual === expectedSha256) {
+    return;
+  }
+  await rm(archivePath, { force: true }).catch(() => undefined);
+  throw new ModelArchiveIntegrityError(archivePath, expectedSha256, actual);
+}
+
+/** Exported for tests: the invocation has to work on whatever tar the platform ships. */
+export async function extractTarArchive(archivePath: string, destDir: string): Promise<void> {
   await mkdir(destDir, { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
+    // Plain `xf`, no hardening flags. `--no-absolute-names` is rejected by
+    // bsdtar (macOS) *and* by GNU tar 1.35, so adding it broke extraction on
+    // every platform. It was redundant anyway: both implementations strip
+    // leading `/` and `../` from member names unless you pass -P, so a plain
+    // extract already cannot escape destDir. The pinned digest verified above
+    // is the control that matters here.
     const child = spawnProcess("tar", ["xf", archivePath, "-C", destDir], {
       stdio: "inherit",
     });
@@ -121,6 +166,9 @@ export async function ensureSherpaOnnxModel(
         outputPath: archivePath,
       });
     }
+
+    logger.info({ modelId: options.modelId, archivePath }, "Verifying model archive integrity");
+    await verifyArchiveIntegrity(archivePath, spec.archiveSha256);
 
     logger.info(
       {
