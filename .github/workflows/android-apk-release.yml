@@ -21,6 +21,9 @@ env:
 
 jobs:
   publish-android-apk:
+    # Fork guard: this repository is a fork, and this workflow publishes/deploys upstream
+    # artifacts it has no credentials or need for. Skipped here, unchanged upstream.
+    if: ${{ github.repository == 'getpaseo/paseo' }}
     permissions:
       contents: write
       packages: read

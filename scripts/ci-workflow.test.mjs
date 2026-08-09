@@ -29,6 +29,7 @@ const gatedCiJobs = new Map([
   ["cli-tests-1", { name: "cli-tests (shard 1/3)", contract: "cli" }],
   ["cli-tests-2", { name: "cli-tests (shard 2/3)", contract: "cli" }],
   ["cli-tests-3", { name: "cli-tests (shard 3/3)", contract: "cli" }],
+  ["connector-tests", { name: "connector-tests", contract: "connector" }],
 ]);
 
 function jobBlocks(source) {
@@ -182,6 +183,7 @@ test("PR routing declares stable behavior ownership", () => {
     ],
     relay: ["packages/relay/**"],
     cli: ["packages/cli/**"],
+    connector: ["packages/connector/**"],
   });
 });
 

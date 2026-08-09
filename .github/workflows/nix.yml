@@ -27,6 +27,9 @@ permissions:
 
 jobs:
   build:
+    # Fork guard: this repository is a fork, and this workflow publishes/deploys upstream
+    # artifacts it has no credentials or need for. Skipped here, unchanged upstream.
+    if: ${{ github.repository == 'getpaseo/paseo' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -106,6 +109,7 @@ jobs:
         run: nix build .#desktop -o result-desktop
 
   build-desktop-darwin:
+    if: ${{ github.repository == 'getpaseo/paseo' }}
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4

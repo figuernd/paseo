@@ -100,6 +100,8 @@ import type {
   SendAgentMessageRequest,
   PaseoConfigRaw,
   PaseoConfigRevision,
+  ToolsCatalogListPayload,
+  ToolsCatalogCallPayload,
   WorkspaceCreateRequest,
   WorkspaceRecoveryState,
 } from "@getpaseo/protocol/messages";
@@ -3875,6 +3877,33 @@ export class DaemonClient {
         mergeMethod: input.method,
       },
       responseType: "checkout_pr_merge_response",
+    });
+  }
+
+  /**
+   * List the daemon's Paseo tool catalog. Gated on `server_info.features.toolsCatalogRpc`;
+   * older daemons expose the catalog over HTTP at /mcp/agents only.
+   */
+  async toolsCatalogList(requestId?: string): Promise<ToolsCatalogListPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"tools.catalog.list.response">({
+      requestId,
+      message: { type: "tools.catalog.list.request" },
+    });
+  }
+
+  async toolsCatalogCall(
+    input: { name: string; arguments?: Record<string, unknown> },
+    requestId?: string,
+  ): Promise<ToolsCatalogCallPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"tools.catalog.call.response">({
+      requestId,
+      message: {
+        type: "tools.catalog.call.request",
+        name: input.name,
+        ...(input.arguments ? { arguments: input.arguments } : {}),
+      },
+      // Catalog calls start agents and run git work; the default RPC timeout is too tight.
+      timeout: 300000,
     });
   }
 

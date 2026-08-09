@@ -460,8 +460,19 @@ describe("session authorization scopes", () => {
     ["hub.execution.*", "hub.management.daemon.get_status.request"],
     ["hub.execution.agent.create.request", "hub.execution.agent.update"],
     ["hub.execution.*", "hub.executions.agent.create.request"],
+    // The tool catalog is the whole daemon surface. A Hub holds execution authority only, so it
+    // must not be able to reach the catalog and escalate past that grant.
+    ["hub.execution.*", "tools.catalog.list.request"],
+    ["hub.execution.*", "tools.catalog.call.request"],
   ])("scope %s rejects %s", (scope, requestType) => {
     expect(isSessionRpcAllowed([scope], requestType)).toBe(false);
+  });
+
+  test.each([
+    ["*", "tools.catalog.list.request"],
+    ["*", "tools.catalog.call.request"],
+  ])("trusted scope %s authorizes %s", (scope, requestType) => {
+    expect(isSessionRpcAllowed([scope], requestType)).toBe(true);
   });
 
   test("replaces a session's scopes without reconstructing the session", async () => {

@@ -44,7 +44,7 @@ The QR code or pairing link is the trust anchor. It carries the daemon's public 
 
 The public key alone is not a credential — it appears in every offer the daemon renders. The enrollment token is what admits a device: the daemon redeems it on that device's first handshake, records the device's key, and discards the token. A link that leaks therefore admits at most the first device to use it, and that device shows up in `paseo daemon clients` rather than going unnoticed. Unredeemed tokens expire after 10 minutes.
 
-After enrollment, the device's own key is what gets it back in, so the link is spent and no longer worth anything. The app stores that key with the host profile; the CLI keeps one at `$PASEO_HOME/cli-client-key`, mode `0600`. Anything that can read those files can reconnect as that device until you revoke it.
+After enrollment, the device's own key is what gets it back in, so the link is spent and no longer worth anything. The app stores that key with the host profile; the CLI keeps one at `$PASEO_HOME/cli-client-key`, mode `0600`; the connector keeps one next to its config as `connector-client-key`, same mode. Anything that can read those files can reconnect as that device until you revoke it.
 
 Manage paired devices from the daemon machine:
 
@@ -85,6 +85,32 @@ available to anything the agents run inside the container.
 For remote access, use the relay connection. It is the supported path for reaching the daemon off-machine, and it adds end-to-end encryption plus a pairing handshake before commands are accepted.
 
 Host header validation and CORS origin checks are defense-in-depth controls for localhost exposure. They help block DNS rebinding and browser-based attacks, but they do not replace network isolation.
+
+## Claude connector trust boundary
+
+The connector (`packages/connector`) is the one Paseo component designed to be published on the
+internet. It exposes an OAuth 2.1-protected MCP endpoint to Claude and holds connections — including
+relay keys — to every daemon you configure. Treat it as a trusted client of those daemons, at the
+same authority level as your phone.
+
+Claude authenticates with OAuth 2.1: dynamic client registration, PKCE with S256, exact redirect-URI
+matching, and tokens bound to the connector's resource identifier. Registration is deliberately open
+because registering grants nothing; a token is issued only after the approval page accepts your
+pairing code. That code is therefore the whole boundary. Anyone who has it can start agents on every
+configured host. Access tokens expire in an hour, refresh tokens rotate on use, and both are
+persisted as SHA-256 hashes so the state file cannot be replayed.
+
+Because the approval page is the one place a secret is checked and it is reachable by anyone who can
+resolve the connector's name, two controls are enforced rather than recommended. The connector
+refuses to start unless the pairing code is at least 24 characters with real character variety.
+Failed approvals back off exponentially, keyed on the source address rather than `client_id` —
+registration is open, so an attacker can mint a fresh client id per guess and a client-keyed limiter
+would never fire. A looser global counter sits behind the per-address one so a distributed attack is
+slowed without letting a single attacker lock the owner out.
+
+The connector adds no sandbox of its own. An agent it starts has exactly the authority that daemon's
+local clients already have. Run the connector behind TLS you control, and do not expose it if you
+would not also expose the daemons behind it.
 
 ## DNS rebinding protection
 

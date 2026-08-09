@@ -182,6 +182,10 @@ import {
   type GitMutationService,
 } from "./session/git-mutation/git-mutation-service.js";
 import {
+  createToolsCatalogService,
+  type ToolsCatalogService,
+} from "./session/tools/tools-catalog-service.js";
+import {
   createWorkspaceProvisioningService,
   WorkspaceProvisioningError,
   type WorkspaceProvisioningService,
@@ -613,6 +617,7 @@ export class Session {
   private readonly workspaceAutoName: WorkspaceAutoName;
   private readonly gitMutation: GitMutationService;
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
+  private readonly toolsCatalog: ToolsCatalogService;
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
   private readonly pushTokenStore: PushTokenStore;
@@ -801,6 +806,9 @@ export class Session {
       paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       logger: this.sessionLogger,
+    });
+    this.toolsCatalog = createToolsCatalogService({
+      buildCatalog: () => this.agentManager.buildPaseoToolCatalog(),
     });
     this.workspaceGitObserver = createWorkspaceGitObserverService({
       workspaceGitService: this.workspaceGitService,
@@ -2091,6 +2099,10 @@ export class Session {
         return this.checkoutSession.handleCheckoutPrCreateRequest(msg);
       case "checkout_pr_merge_request":
         return this.checkoutSession.handleCheckoutPrMergeRequest(msg);
+      case "tools.catalog.list.request":
+        return this.handleToolsCatalogListRequest(msg);
+      case "tools.catalog.call.request":
+        return this.handleToolsCatalogCallRequest(msg);
       case "checkout.forge.set_auto_merge.request":
       case "checkout.github.set_auto_merge.request":
         return this.checkoutSession.handleCheckoutForgeSetAutoMergeRequest(msg);
@@ -6802,6 +6814,20 @@ export class Session {
         clearTimeout(timeoutHandle);
       }
     }
+  }
+
+  private async handleToolsCatalogListRequest(
+    msg: Extract<SessionInboundMessage, { type: "tools.catalog.list.request" }>,
+  ): Promise<void> {
+    const payload = await this.toolsCatalog.handleListRequest(msg);
+    this.emit({ type: "tools.catalog.list.response", payload });
+  }
+
+  private async handleToolsCatalogCallRequest(
+    msg: Extract<SessionInboundMessage, { type: "tools.catalog.call.request" }>,
+  ): Promise<void> {
+    const payload = await this.toolsCatalog.handleCallRequest(msg);
+    this.emit({ type: "tools.catalog.call.response", payload });
   }
 
   /**

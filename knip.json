@@ -50,6 +50,10 @@
       "entry": ["src/index.ts", "src/e2ee.ts", "src/cloudflare-adapter.ts", "src/**/*.test.ts"],
       "project": ["src/**/*.ts"]
     },
+    "packages/connector": {
+      "entry": ["src/index.ts", "src/cli.ts", "bin/paseo-connector", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
     "packages/website": {
       "entry": ["src/router.tsx", "vite.config.ts", "src/routes/**/*.tsx"],
       "project": ["src/**/*.{ts,tsx}"],

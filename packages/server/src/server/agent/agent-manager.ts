@@ -67,7 +67,11 @@ import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
 import { isSystemInjectedEnvelope } from "./agent-prompt.js";
 import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
-import type { PaseoToolCatalogFactory } from "./tools/types.js";
+import type {
+  PaseoToolCatalog,
+  PaseoToolCatalogFactory,
+  PaseoToolRuntimeContext,
+} from "./tools/types.js";
 import {
   ProviderSubagentStore,
   type ProviderSubagentDescriptor,
@@ -716,6 +720,20 @@ export class AgentManager {
 
   setPaseoToolCatalogFactory(factory: PaseoToolCatalogFactory | null): void {
     this.paseoToolCatalogFactory = factory;
+  }
+
+  /**
+   * Build a tool catalog for a caller that is not an agent. `setPaseoToolsEnabled` is not
+   * consulted here: it controls whether the daemon injects tools into the agents it launches,
+   * which is a separate decision from whether a trusted client may drive the catalog itself.
+   */
+  async buildPaseoToolCatalog(
+    context: PaseoToolRuntimeContext = {},
+  ): Promise<PaseoToolCatalog | null> {
+    if (!this.paseoToolCatalogFactory) {
+      return null;
+    }
+    return await this.paseoToolCatalogFactory(context);
   }
 
   /**

@@ -1,0 +1,41 @@
+{
+  "name": "@getpaseo/connector",
+  "version": "0.3.0-beta.2",
+  "description": "Paseo connector - a remote MCP bridge that lets Claude drive agents across your Paseo hosts",
+  "bin": {
+    "paseo-connector": "bin/paseo-connector"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "build": "tsc -p tsconfig.json --incremental false",
+    "build:clean": "npm run clean && npm run build",
+    "prepack": "npm run build:clean",
+    "typecheck": "tsgo --noEmit",
+    "start": "node bin/paseo-connector",
+    "test": "vitest run src"
+  },
+  "dependencies": {
+    "@getpaseo/client": "0.3.0-beta.2",
+    "@getpaseo/protocol": "0.3.0-beta.2",
+    "@getpaseo/relay": "0.3.0-beta.2",
+    "@modelcontextprotocol/sdk": "^1.20.1",
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.20",
+    "@types/ws": "^8.5.8",
+    "typescript": "^5.2.2",
+    "vitest": "^4.1.6"
+  }
+}
